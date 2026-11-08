@@ -66,9 +66,10 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .mini-v small{font-size:13px;font-weight:500;color:var(--muted)}
 .mini-s{font-size:12px;color:var(--muted);min-height:16px}
 .wbtns{display:flex;gap:6px;margin-top:10px}
-.wbtns button{flex:1;border:0;border-radius:10px;padding:8px 0;font:inherit;font-size:14px;font-weight:600;cursor:pointer;
-  background:var(--bg);color:var(--w)}
-.wbtns button.minus{flex:.6;color:var(--muted)}
+.wbtns{gap:4px}
+.wbtns button{flex:1;min-width:0;border:0;border-radius:10px;padding:8px 0;font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+  background:var(--bg);color:var(--w);white-space:nowrap}
+.wbtns button.minus{flex:.55;color:var(--muted)}
 #weightCard{cursor:pointer}
 h2{font-size:18px;margin:6px 4px 10px}
 .entry{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
@@ -198,9 +199,10 @@ textarea{min-height:80px;resize:vertical}
       <div class="mini-v" id="waterTxt">0 <small>мл</small></div>
       <div class="bar"><i id="waterBar" style="background:var(--w)"></i></div>
       <div class="wbtns">
-        <button class="minus" id="waterMinus" aria-label="Убрать 250 мл">−</button>
-        <button id="water250">+250</button>
-        <button id="water500">+500</button>
+        <button class="minus" id="waterMinus" aria-label="Убрать">−</button>
+        <button id="water1">+250</button>
+        <button id="water2">+500</button>
+        <button class="minus" id="waterCustom" aria-label="Другой объём">✎</button>
       </div>
     </div>
     <div class="card" id="weightCard">
@@ -335,8 +337,12 @@ textarea{min-height:80px;resize:vertical}
       <div><label for="gF">Жиры г</label><input id="gF" type="number" inputmode="numeric"></div>
       <div><label for="gC">Углев. г</label><input id="gC" type="number" inputmode="numeric"></div>
     </div>
-    <label for="gW">Вода, мл в день</label>
-    <input id="gW" type="number" inputmode="numeric" step="50">
+    <div class="grid3">
+      <div><label for="gW">Вода в день, мл</label><input id="gW" type="number" inputmode="numeric" step="50"></div>
+      <div><label for="gG1">Кнопка 1, мл</label><input id="gG1" type="number" inputmode="numeric" min="10" max="3000"></div>
+      <div><label for="gG2">Кнопка 2, мл</label><input id="gG2" type="number" inputmode="numeric" min="10" max="3000"></div>
+    </div>
+    <div class="hint">Кнопки воды — объём ваших стаканов или бутылок. Кнопка ✎ добавляет любой объём.</div>
 
     <h4>ИИ</h4>
     <label for="sProvider">Провайдер</label>
@@ -383,6 +389,7 @@ textarea{min-height:80px;resize:vertical}
   let settings = Object.assign({ provider:"gemini", key:"", model:"", goal:{k:2000,p:120,f:65,c:230}, water:2000 }, store.get("tarelka.settings", {}));
   settings.profile = Object.assign({}, DEFAULT_PROFILE, settings.profile || {});
   if (!settings.water) settings.water = 2000;
+  if (!Array.isArray(settings.glasses) || settings.glasses.length !== 2) settings.glasses = [250, 500];
   // the old default free model was withdrawn — move anyone still pinned to it onto the free router
   if (settings.model === "google/gemma-3-27b-it:free") { settings.model = ""; store.set("tarelka.settings", settings); }
   let entries = store.get("tarelka.entries", []);
@@ -461,6 +468,10 @@ textarea{min-height:80px;resize:vertical}
     $("waterTxt").innerHTML = ml + " <small>мл</small>";
     $("waterGoalTxt").textContent = "из " + goal;
     $("waterBar").style.width = Math.min(100, ml / goal * 100) + "%";
+    const [g1, g2] = settings.glasses;
+    $("water1").textContent = "+" + g1; $("water1").setAttribute("aria-label", "Добавить " + g1 + " мл");
+    $("water2").textContent = "+" + g2; $("water2").setAttribute("aria-label", "Добавить " + g2 + " мл");
+    $("waterMinus").setAttribute("aria-label", "Убрать " + g1 + " мл");
   }
   function addWater(delta){
     const k = dayKey(currentDay());
@@ -468,9 +479,16 @@ textarea{min-height:80px;resize:vertical}
     if (!water[k]) delete water[k];
     store.set("tarelka.water", water); renderWater();
   }
-  $("water250").onclick = () => addWater(250);
-  $("water500").onclick = () => addWater(500);
-  $("waterMinus").onclick = () => addWater(-250);
+  $("water1").onclick = () => addWater(settings.glasses[0]);
+  $("water2").onclick = () => addWater(settings.glasses[1]);
+  $("waterMinus").onclick = () => addWater(-settings.glasses[0]);
+  $("waterCustom").onclick = () => {
+    const v = prompt("Сколько мл воды добавить? (чтобы убрать — со знаком минус, например −150)", "");
+    if (v === null) return;
+    const ml = Math.round(parseFloat(String(v).replace(/[−–]/g, "-").replace(",", ".")));
+    if (!ml || Math.abs(ml) > 5000) { alert("Введите число мл, например 200 или −150."); return; }
+    addWater(ml);
+  };
 
   // ---------- weight ----------
   function renderWeightCard(){
@@ -760,6 +778,7 @@ textarea{min-height:80px;resize:vertical}
     $("providerHint").innerHTML = PROVIDERS[settings.provider].hint;
     $("gK").value = settings.goal.k; $("gP").value = settings.goal.p; $("gF").value = settings.goal.f; $("gC").value = settings.goal.c;
     $("gW").value = settings.water;
+    $("gG1").value = settings.glasses[0]; $("gG2").value = settings.glasses[1];
   }
   $("calcGoal").onclick = () => {
     const sex = $("pSex").value, age = +$("pAge").value, h = +$("pHeight").value;
@@ -790,6 +809,7 @@ textarea{min-height:80px;resize:vertical}
     settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m,
       goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 },
       water: num($("gW").value) || 2000,
+      glasses: [$("gG1").value, $("gG2").value].map((v, i) => { const n = num(v); return n >= 10 && n <= 3000 ? n : [250, 500][i]; }),
       profile: { goal: goalType, sex: $("pSex").value, age: $("pAge").value, height: $("pHeight").value,
         target: $("pTarget").value, act: $("pAct").value } };
     store.set("tarelka.settings", settings);
@@ -802,7 +822,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "7";
+  const APP_VERSION = "8";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
