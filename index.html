@@ -755,21 +755,36 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 
   // OpenRouter's free list changes often and openrouter/free may pick a tiny model that cannot write a long JSON menu,
   // so we choose strong free models ourselves from the live list and fall back from one to the next.
-  let freeList = null;
+  // Thinking is what kills free models here: it eats the whole length budget and the answer never comes.
+  // So: skip models whose thinking cannot be switched off, prefer ones that don't think by default,
+  // and send effort "none" (some models accept only high/medium/none and treat "low" as their default "high").
+  let freeList = null; const modelMeta = {};
   async function goodFreeModels(needImage){
     if (!freeList) {
       try {
         const j = await (await fetch("https://openrouter.ai/api/v1/models")).json();
         const weak = /lfm|mini|nano|lightning|code|flint|tiny|small|(^|[-/_:])[1-9](\.\d+)?b\b/i;
         const strong = /gemma-[3-9]-(2[6-9]|[3-9]\d)b|ultra|super|deepseek|qwen.*(32|72|235)b|llama-3\.3-70b|llama-4|glm|kimi|gpt-oss-120b|mistral-(medium|large)/i;
+        for (const m of j.data || []) {
+          const rs = m.reasoning || {}, sp = m.supported_parameters || [];
+          modelMeta[m.id] = { mandatory: !!rs.mandatory, thinks: rs.default_enabled !== false, efforts: rs.supported_efforts || null,
+            reasoningParam: sp.includes("reasoning"), json: sp.includes("response_format") };
+        }
         freeList = (j.data || [])
-          .filter(m => /:free$/.test(m.id) && m.pricing && +m.pricing.prompt === 0 && +m.pricing.completion === 0 && !weak.test(m.id))
+          .filter(m => /:free$/.test(m.id) && m.pricing && +m.pricing.prompt === 0 && +m.pricing.completion === 0 && !weak.test(m.id) && !modelMeta[m.id].mandatory)
           .map(m => ({ id: m.id, img: ((m.architecture && m.architecture.input_modalities) || []).includes("image"),
-                       score: (strong.test(m.id) ? 1e9 : 0) + (/reasoning|think/i.test(m.id) ? -1e8 : 0) + (m.context_length || 0) }))
+                       score: (modelMeta[m.id].thinks ? 0 : 2e9) + (strong.test(m.id) ? 1e9 : 0) + (/reasoning|think/i.test(m.id) ? -1e8 : 0) + (m.context_length || 0) }))
           .sort((a, b) => b.score - a.score);
       } catch { freeList = []; }
     }
     return freeList.filter(m => !needImage || m.img).map(m => m.id);
+  }
+  function reasoningFor(model){
+    const m = modelMeta[model];
+    if (!m || m.mandatory) return { effort: "low", exclude: true };          // unknown model or the router: old behaviour
+    if (!m.reasoningParam) return null;
+    if (m.efforts && !m.efforts.includes("none")) return { effort: m.efforts[m.efforts.length - 1], exclude: true };
+    return { effort: "none", exclude: true };
   }
   // `parse` runs inside the loop, so a reply in the wrong format also moves on to the next model
   async function askAI(userText, photo, onProgress, parse){
@@ -777,7 +792,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     let models = [first, first];
     if (p === "openrouter") {
       const good = await goodFreeModels(!!photo);
-      models = first === "openrouter/free" ? [...good.slice(0, 3), "openrouter/free"] : [first, ...good.filter(m => m !== first).slice(0, 2), "openrouter/free"];
+      // the router is only a last resort: it may land on a model that thinks until the budget runs out
+      models = first === "openrouter/free" ? [...good.slice(0, 3)] : [first, ...good.filter(m => m !== first).slice(0, 2)];
+      if (models.length < 2) models.push("openrouter/free");
     }
     let last;
     for (let i = 0; i < models.length; i++) {
@@ -815,9 +832,11 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     const headers = { "Content-Type":"application/json", "Authorization":"Bearer " + key };
     if (p === "openrouter") headers["X-Title"] = "Tarelka";
     // stream the reply: tokens keep the connection busy, so a long answer is not cut off by an idle timeout
-    const req = { model, temperature:0.2, stream: true, max_tokens: 6000, messages:[{ role:"user", content }] };
-    // "thinking" free models can spend the whole budget reasoning and return no answer: keep reasoning short
-    if (p === "openrouter") req.reasoning = { effort: "low", exclude: true };
+    const req = { model, temperature:0.2, stream: true, max_tokens: 12000, messages:[{ role:"user", content }] };
+    if (p === "openrouter") {
+      const rz = reasoningFor(model); if (rz) req.reasoning = rz;
+      if (modelMeta[model] && modelMeta[model].json) req.response_format = { type: "json_object" };
+    }
     const r = await fetch(url, { method:"POST", headers, body: JSON.stringify(req) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -1142,7 +1161,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "13";
+  const APP_VERSION = "14";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
