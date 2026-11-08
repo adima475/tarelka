@@ -199,8 +199,8 @@ textarea{min-height:80px;resize:vertical}
   const PROVIDERS = {
     gemini: { model: "gemini-flash-latest", vision: true,
       hint: 'Бесплатный ключ: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (войти через Google → Create API key).' },
-    openrouter: { model: "google/gemma-3-27b-it:free", vision: true,
-      hint: 'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. Бесплатные модели оканчиваются на <b>:free</b> — список на openrouter.ai/models.' },
+    openrouter: { model: "openrouter/free", vision: true,
+      hint: 'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. <b>openrouter/free</b> сам выбирает доступную бесплатную модель. Можно указать конкретную — с окончанием <b>:free</b>.' },
     deepseek: { model: "deepseek-chat", vision: false,
       hint: 'Ключ: <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Фото не распознаёт — только текстовое описание. Нужен баланс.' }
   };
@@ -211,6 +211,8 @@ textarea{min-height:80px;resize:vertical}
     set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
   };
   let settings = Object.assign({ provider:"gemini", key:"", model:"", goal:{k:2000,p:120,f:65,c:230} }, store.get("tarelka.settings", {}));
+  // the old default free model was withdrawn — move anyone still pinned to it onto the free router
+  if (settings.model === "google/gemma-3-27b-it:free") { settings.model = ""; store.set("tarelka.settings", settings); }
   let entries = store.get("tarelka.entries", []);
   let dayOffset = 0;
   let pending = { photo:null, thumb:null };
@@ -370,7 +372,10 @@ textarea{min-height:80px;resize:vertical}
         ? "Состав: " + d.items.map(i => `${i.name}${i.grams ? " " + num(i.grams) + " г" : ""} (${num(i.calories)} ккал)`).join(", ") : "";
       setStatus("Готово" + (d.confidence ? " · точность: " + d.confidence : "") + ". Проверьте и поправьте, если нужно.");
     } catch (e) {
-      setStatus("Ошибка: " + escapeHTML(e.message || String(e)), "err");
+      let msg = "Ошибка: " + escapeHTML(e.message || String(e));
+      if (settings.provider === "openrouter" && /unavailable|free|not found|no endpoints/i.test(e.message || ""))
+        msg += "<br>Откройте ⚙︎ и поставьте модель <b>openrouter/free</b> — или выберите Google Gemini.";
+      setStatus(msg, "err");
     } finally { $("analyze").disabled = false; }
   }
   const escapeHTML = s => s.replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
