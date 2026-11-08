@@ -101,7 +101,8 @@ h2{font-size:18px;margin:6px 4px 10px}
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);
   border-radius:12px;padding:12px}
-textarea{min-height:80px;resize:vertical}
+textarea{min-height:96px;resize:vertical;line-height:1.4}
+::placeholder{color:var(--muted);opacity:.8}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -153,7 +154,11 @@ textarea{min-height:80px;resize:vertical}
 .stats span{font-size:11px;color:var(--muted)}
 /* menu */
 .mtotal{background:var(--accent-soft);border-radius:14px;padding:12px;margin:14px 0 4px;font-size:14px}
-.mtotal b{font-size:17px}
+.mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.mgrid span{display:block;font-size:11px;color:var(--muted)}
+.mgrid b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+.mgrid small{display:block;font-size:11px;color:var(--muted)}
+.mwarn{font-size:13px;color:var(--danger);margin-top:8px}
 .meal{border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:10px}
 .meal .mh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .meal .mt{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
@@ -165,8 +170,8 @@ textarea{min-height:80px;resize:vertical}
 .meal li span:last-child{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal .mm{font-size:13px;color:var(--muted);margin-top:8px}
 .meal .mr{font-size:13px;margin-top:6px;line-height:1.45}
-.meal .madd{margin-top:10px;width:100%;border:0;border-radius:12px;padding:10px;font:inherit;font-weight:600;cursor:pointer;background:var(--bg);color:var(--accent)}
-.meal .madd:disabled{color:var(--muted);cursor:default}
+.madd{margin-top:10px;width:100%;border:0;border-radius:12px;padding:10px;font:inherit;font-weight:600;cursor:pointer;background:var(--bg);color:var(--accent)}
+.madd:disabled{color:var(--muted);cursor:default}
 /* weight */
 .chart{width:100%;height:auto;display:block;margin-top:8px}
 .wlist .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:15px}
@@ -249,7 +254,7 @@ textarea{min-height:80px;resize:vertical}
     <h3 id="mealTitle">Новый приём пищи</h3>
     <img class="preview" id="preview" alt="">
     <label for="desc">Описание (необязательно для фото)</label>
-    <textarea id="desc" placeholder="Например: овсянка на молоке 250 г, банан, кофе с сахаром"></textarea>
+    <textarea id="desc" rows="3" placeholder="Например: овсянка на молоке 250 г, банан"></textarea>
     <div class="btnrow" style="margin-top:10px"><button class="primary" id="analyze">✨ Посчитать с ИИ</button></div>
     <div class="status" id="status"></div>
 
@@ -280,13 +285,17 @@ textarea{min-height:80px;resize:vertical}
       <button data-v="day">На весь день</button>
       <button data-v="rest">На остаток дня</button>
     </div>
-    <div class="grid2">
-      <div><label for="menuKcal">Калории</label><input id="menuKcal" type="text" inputmode="numeric" autocomplete="off"></div>
-      <div><label for="menuMeals">Приёмов пищи</label>
-        <select id="menuMeals"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
+    <div class="grid4">
+      <div><label for="menuKcal">Ккал</label><input id="menuKcal" type="text" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="menuP">Белки г</label><input id="menuP" type="text" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="menuF">Жиры г</label><input id="menuF" type="text" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="menuC">Углев. г</label><input id="menuC" type="text" inputmode="numeric" autocomplete="off"></div>
     </div>
+    <div class="hint" id="menuMacroHint"></div>
+    <label for="menuMeals">Приёмов пищи</label>
+    <select id="menuMeals"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
     <label for="menuPrefs">Пожелания</label>
-    <textarea id="menuPrefs" placeholder="Например: без рыбы, люблю гречку и курицу, готовить не дольше 20 минут, недорогие продукты"></textarea>
+    <textarea id="menuPrefs" rows="3" placeholder="Например: без рыбы, люблю гречку, готовить до 20 минут"></textarea>
     <div class="btnrow" style="margin-top:10px"><button class="primary" id="menuGo">✨ Составить меню</button></div>
     <div class="status" id="menuStatus"></div>
     <div id="menuOut"></div>
@@ -728,18 +737,22 @@ textarea{min-height:80px;resize:vertical}
   // Safari reports a dropped connection as TypeError "Load failed" (Chrome: "Failed to fetch")
   const isNetErr = e => e instanceof TypeError || /load failed|failed to fetch|network|fetch/i.test(e && e.message || "");
   function errText(e){
+    if (e && e.retry) return escapeHTML(e.message);
     if (isNetErr(e)) return "Связь с ИИ прервалась. Частые причины: слабый интернет, приложение свернули или экран заблокировался во время ответа, бесплатная модель слишком долго думала. Попробуйте ещё раз и не сворачивайте приложение, пока идёт ответ.";
     return "Ошибка: " + escapeHTML(e && e.message || String(e));
   }
-  // one automatic retry when the connection drops; other errors are reported as they are
+  // one automatic retry when the connection drops or the reply comes back empty
+  // (with openrouter/free the retry is usually served by a different free model); other errors are reported as they are
+  const retryable = e => isNetErr(e) || (e && e.retry);
   async function askAI(userText, photo, onProgress){
     try { return await callAI(userText, photo, onProgress); }
     catch (e) {
-      if (!isNetErr(e)) throw e;
+      if (!retryable(e)) throw e;
       if (onProgress) onProgress(-1);
       return await callAI(userText, photo, onProgress);
     }
   }
+  const emptyErr = msg => Object.assign(new Error(msg), { retry: true });
 
   async function callAI(userText, photo, onProgress){
     const p = settings.provider, cfg = PROVIDERS[p], model = settings.model || cfg.model, key = settings.key.trim();
@@ -761,13 +774,15 @@ textarea{min-height:80px;resize:vertical}
     const headers = { "Content-Type":"application/json", "Authorization":"Bearer " + key };
     if (p === "openrouter") headers["X-Title"] = "Tarelka";
     // stream the reply: tokens keep the connection busy, so a long answer is not cut off by an idle timeout
-    const r = await fetch(url, { method:"POST", headers,
-      body: JSON.stringify({ model, temperature:0.2, stream: true, messages:[{ role:"user", content }] }) });
+    const req = { model, temperature:0.2, stream: true, max_tokens: 6000, messages:[{ role:"user", content }] };
+    // "thinking" free models can spend the whole budget reasoning and return no answer: keep reasoning short
+    if (p === "openrouter") req.reasoning = { effort: "low", exclude: true };
+    const r = await fetch(url, { method:"POST", headers, body: JSON.stringify(req) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error((j.error && (j.error.message || j.error)) || ("HTTP " + r.status));
     }
-    let acc = "", buf = "", done = false;
+    let acc = "", buf = "", done = false, finish = "";
     const handle = line => {
       line = line.trim();
       if (!line.startsWith("data:")) return;          // ": OPENROUTER PROCESSING" keep-alive comments are skipped
@@ -776,7 +791,8 @@ textarea{min-height:80px;resize:vertical}
       let o; try { o = JSON.parse(payload); } catch { return; }
       if (o.error) throw new Error(o.error.message || String(o.error));
       const ch = o.choices && o.choices[0];
-      const piece = (ch && ch.delta && ch.delta.content) || (ch && ch.message && ch.message.content) || "";
+      if (ch && ch.finish_reason) finish = ch.finish_reason;
+      const piece = (ch && ch.delta && ch.delta.content) || (ch && ch.message && ch.message.content) || (ch && ch.text) || "";
       if (piece) { acc += piece; if (onProgress) onProgress(acc.length); }
     };
     if (r.body && r.body.getReader) {
@@ -795,7 +811,9 @@ textarea{min-height:80px;resize:vertical}
       if (txt.trim().startsWith("{")) { const j = JSON.parse(txt); return j.choices?.[0]?.message?.content || ""; }
       txt.split("\n").forEach(handle);
     }
-    if (!acc.trim()) throw new Error("ИИ прислал пустой ответ — попробуйте ещё раз");
+    if (!acc.trim()) throw emptyErr("ИИ прислал пустой ответ" + (finish === "length" ? " (не хватило лимита длины)" : "") +
+      ". Попробуйте ещё раз — бесплатный роутер каждый раз выбирает другую модель. Если повторяется, поставьте в ⚙︎ конкретную модель с окончанием :free.");
+    if (finish === "length" && !/\}\s*$/.test(acc.replace(/```/g, "").trim())) throw emptyErr("Ответ ИИ оборвался на середине — попробуйте ещё раз или уменьшите число приёмов пищи.");
     return acc;
   }
 
@@ -854,12 +872,17 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- AI menu ----------
   let menuScope = "day";
-  const eatenOn = key => entries.filter(e => e.day === key).reduce((s, e) => s + num(e.k), 0);
+  const eatenOn = key => entries.filter(e => e.day === key).reduce((s, e) =>
+    ({ k: s.k + num(e.k), p: s.p + (parseNum(e.p) || 0), f: s.f + (parseNum(e.f) || 0), c: s.c + (parseNum(e.c) || 0) }), { k:0, p:0, f:0, c:0 });
   function setMenuScope(v){
     menuScope = v;
     for (const b of $("menuSeg").children) b.classList.toggle("on", b.dataset.v === v);
-    const g = settings.goal.k, rest = g - eatenOn(dayKey(currentDay()));
-    $("menuKcal").value = v === "day" ? g : Math.max(0, rest);
+    const g = settings.goal, eaten = eatenOn(dayKey(currentDay())), rest = g.k - eaten.k;
+    const t = v === "day" ? { k: g.k, p: g.p, f: g.f, c: g.c }
+      : { k: Math.max(0, rest), p: Math.max(0, Math.round(g.p - eaten.p)), f: Math.max(0, Math.round(g.f - eaten.f)), c: Math.max(0, Math.round(g.c - eaten.c)) };
+    $("menuKcal").value = t.k; $("menuP").value = t.p; $("menuF").value = t.f; $("menuC").value = t.c;
+    $("menuMacroHint").textContent = v === "day" ? "Это ваша дневная норма из ⚙︎. Можно поправить для этого меню."
+      : "Это сколько осталось до нормы сегодня. Можно поправить.";
     const h = new Date().getHours();
     $("menuMeals").value = v === "day" ? 4 : (dayOffset !== 0 ? 3 : h < 11 ? 3 : h < 16 ? 2 : 1);
     $("menuStatus").className = "status";
@@ -890,10 +913,23 @@ textarea{min-height:80px;resize:vertical}
   function renderMenu(saved){
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
-    const meals = saved.meals, tk = sumBy(meals, "k");
+    const meals = saved.meals;
+    const T = saved.targets || { k: saved.target };           // menus saved before v12 kept only the calorie target
+    const got = { k: sumBy(meals, "k"), p: sumBy(meals, "p"), f: sumBy(meals, "f"), c: sumBy(meals, "c") };
+    const off = menuOff(got, T);
     const tot = document.createElement("div"); tot.className = "mtotal";
-    tot.innerHTML = `Итого: <b>${tk} ккал</b> · Б ${sumBy(meals,"p")} · Ж ${sumBy(meals,"f")} · У ${sumBy(meals,"c")}` +
-      `<br><span style="color:var(--muted)">Цель была ${saved.target} ккал${Math.abs(tk - saved.target) > saved.target * 0.07 ? " — ИИ промахнулся, поправьте граммовки или составьте заново" : ""}</span>`;
+    const cell = (lbl, key, unit) => {
+      const has = T[key] > 0, bad = off.includes(key);
+      return `<div><span>${lbl}</span><b style="color:${!has ? "var(--text)" : bad ? "var(--danger)" : "var(--ok-tx)"}">${got[key]}${unit}</b>` +
+        (has ? `<small>из ${T[key]}${bad ? " ⚠︎" : " ✓"}</small>` : "") + `</div>`;
+    };
+    tot.innerHTML = `<div class="mgrid">${cell("Ккал","k","")}${cell("Белки","p"," г")}${cell("Жиры","f"," г")}${cell("Углев.","c"," г")}</div>` +
+      (off.length ? `<div class="mwarn">ИИ не попал в норму по: ${off.map(k => ({k:"калориям",p:"белкам",f:"жирам",c:"углеводам"})[k]).join(", ")}.</div>` : "");
+    if (off.length) {
+      const fix = document.createElement("button"); fix.className = "madd"; fix.style.background = "var(--card)";
+      fix.textContent = "🔧 Подогнать под мои КБЖУ"; fix.onclick = () => adjustMenu(saved, got);
+      tot.append(fix);
+    }
     out.append(tot);
     meals.forEach((m, idx) => {
       const box = document.createElement("div"); box.className = "meal";
@@ -925,36 +961,63 @@ textarea{min-height:80px;resize:vertical}
       box.append(add); out.append(box);
     });
   }
-  $("menuGo").onclick = async () => {
+  // which of kcal / protein / fat / carbs missed the target: ±7% for kcal, ±12% (min 8 g) for macros
+  function menuOff(got, T){
+    const bad = [];
+    if (T.k > 0 && Math.abs(got.k - T.k) > T.k * 0.07) bad.push("k");
+    for (const m of ["p","f","c"]) if (T[m] > 0 && Math.abs(got[m] - T[m]) > Math.max(8, T[m] * 0.12)) bad.push(m);
+    return bad;
+  }
+  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
+  async function runMenu(prompt, T, keepPrev){
     const st = $("menuStatus");
-    if (!settings.key) { st.className = "status err"; st.textContent = "Сначала добавьте API-ключ в настройках ⚙︎"; return; }
-    const kcal = num($("menuKcal").value), n = +$("menuMeals").value, prefs = $("menuPrefs").value.trim();
-    if (kcal < 100) { st.className = "status err"; st.textContent = "Укажите калории — хотя бы 100."; return; }
-    settings.menuPrefs = prefs; store.set("tarelka.settings", settings);
-    const g = settings.goal, ratio = kcal / (g.k || 2000);
-    const goalTxt = { lose: "похудеть (больше белка, сытные блюда)", keep: "поддерживать вес", gain: "набрать вес" }[settings.profile.goal] || "поддерживать вес";
-    const scope = menuScope === "day" ? "весь день" : "оставшуюся часть дня";
-    const prompt = `Ты диетолог. Составь меню на ${scope} из ${n} приём(ов) пищи суммарно на ${kcal} ккал (допуск ±5%).
-Ориентир по БЖУ на всё меню: белки ≈ ${Math.round(g.p * ratio)} г, жиры ≈ ${Math.round(g.f * ratio)} г, углеводы ≈ ${Math.round(g.c * ratio)} г.
-Цель человека: ${goalTxt}. Пожелания: ${prefs || "нет"}.
-Используй обычные продукты из российских магазинов. Для каждого продукта укажи вес в граммах и уточни состояние, где это важно
-(например «гречка сухая», «куриное филе сырое», «молоко 2,5%»). Калории и БЖУ считай по стандартным таблицам для указанного веса.
-Названия приёмов: Завтрак, Перекус, Обед, Полдник, Ужин — по смыслу и по количеству.
-Ответь ТОЛЬКО JSON без пояснений, по-русски:
-{"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
-    $("menuGo").disabled = true; $("menuOut").innerHTML = "";
+    $("menuGo").disabled = true; if (!keepPrev) $("menuOut").innerHTML = "";
     st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
     try {
       const meals = normalizeMenu(parseJSON(await askAI(prompt, null, n => {
-        st.innerHTML = '<span class="spinner"></span>' + (n < 0 ? "Связь прервалась, пробую ещё раз…"
+        st.innerHTML = '<span class="spinner"></span>' + (n < 0 ? "Не получилось, пробую ещё раз…"
           : "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
       })));
-      const saved = { target: kcal, created: Date.now(), meals };
+      const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
       st.className = "status err"; st.innerHTML = errText(e);
     } finally { $("menuGo").disabled = false; }
+  }
+  $("menuGo").onclick = () => {
+    const st = $("menuStatus");
+    if (!settings.key) { st.className = "status err"; st.textContent = "Сначала добавьте API-ключ в настройках ⚙︎"; return; }
+    const T = { k: num($("menuKcal").value), p: num($("menuP").value), f: num($("menuF").value), c: num($("menuC").value) };
+    const n = +$("menuMeals").value, prefs = $("menuPrefs").value.trim();
+    if (T.k < 100) { st.className = "status err"; st.textContent = "Укажите калории — хотя бы 100."; return; }
+    settings.menuPrefs = prefs; store.set("tarelka.settings", settings);
+    const goalTxt = { lose: "похудеть (больше белка, сытные блюда)", keep: "поддерживать вес", gain: "набрать вес" }[settings.profile.goal] || "поддерживать вес";
+    const scope = menuScope === "day" ? "весь день" : "оставшуюся часть дня";
+    const macros = [T.p && `белки ${T.p} г`, T.f && `жиры ${T.f} г`, T.c && `углеводы ${T.c} г`].filter(Boolean).join(", ");
+    const prompt = `Ты диетолог. Составь меню на ${scope} из ${n} приём(ов) пищи.
+ГЛАВНОЕ — точно попасть в норму на всё меню вместе: ${T.k} ккал (±5%)${macros ? `; ${macros} (каждое ±10%)` : ""}.
+Подбирай продукты и граммовки так, чтобы сходились и калории, и БЖУ: если не хватает белка — добавь творог, курицу, яйца, рыбу и т. п.; если много жиров — замени жирные продукты.
+Перед ответом сложи БЖУ всех продуктов и, если не сходится, поправь граммовки.
+Цель человека: ${goalTxt}. Пожелания: ${prefs || "нет"}.
+Используй обычные продукты из российских магазинов. Для каждого продукта укажи вес в граммах и уточни состояние, где это важно
+(например «гречка сухая», «куриное филе сырое», «молоко 2,5%»). Калории и БЖУ каждого продукта считай по стандартным таблицам для указанного веса.
+Названия приёмов: Завтрак, Перекус, Обед, Полдник, Ужин — по смыслу и по количеству.
+Ответь ТОЛЬКО JSON без пояснений, по-русски:
+${JSON_SHAPE}`;
+    runMenu(prompt, T);
   };
+  function adjustMenu(saved, got){
+    const T = saved.targets, compact = { meals: saved.meals.map(m => ({ title: m.title, dish: m.dish, recipe: m.recipe,
+      ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
+    const line = (lbl, k, u) => T[k] > 0 ? `${lbl}: сейчас ${got[k]}${u}, нужно ${T[k]}${u}` : "";
+    const prompt = `Вот меню (JSON). Его сумма не попадает в норму:
+${[line("ккал","k",""), line("белки","p"," г"), line("жиры","f"," г"), line("углеводы","c"," г")].filter(Boolean).join("\n")}
+Исправь меню: меняй граммовки, при необходимости замени или добавь продукты, чтобы сумма попала в норму (ккал ±5%, каждое из БЖУ ±10%).
+Сохрани блюда и пожелания, насколько возможно. Калории и БЖУ продуктов — по стандартным таблицам для нового веса.
+Ответь ТОЛЬКО исправленным JSON в том же формате:
+${JSON.stringify(compact)}`;
+    runMenu(prompt, T, true);
+  }
 
   // ---------- settings & goal calculator ----------
   let goalType = settings.profile.goal;
@@ -1035,7 +1098,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "11";
+  const APP_VERSION = "12";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
