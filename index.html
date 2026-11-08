@@ -96,6 +96,12 @@ h2{font-size:18px;margin:6px 4px 10px}
 .sheet.open{transform:none}
 .sheet-bg.open{display:block}
 .sheet .inner{max-width:520px;margin:0 auto}
+/* pinned top bar: grab handle + close button that stay visible while the sheet scrolls */
+.sheet-top{position:sticky;top:-18px;margin:-18px -16px 0;height:18px;z-index:3;pointer-events:none}
+.sheet-top .grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:7px auto 0}
+.sheet-top .x{pointer-events:auto;position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;border:0;padding:0;
+  background:var(--bg);color:var(--text);font-size:17px;line-height:34px;box-shadow:0 1px 6px rgba(0,0,0,.3);cursor:pointer}
+.sheet h3{padding-right:44px}
 .sheet h3{margin:0 0 14px;font-size:20px}
 .sheet h4{margin:22px 0 4px;font-size:16px}
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
@@ -673,6 +679,27 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   // ---------- sheets ----------
   function openSheet(name){ $(name+"Sheet").classList.add("open"); $(name+"Bg").classList.add("open"); }
   function closeSheet(name){ $(name+"Sheet").classList.remove("open"); $(name+"Bg").classList.remove("open"); }
+  // every sheet gets a pinned ✕ and can be swiped down from its top to close
+  for (const sh of document.querySelectorAll(".sheet")) {
+    const name = sh.id.replace(/Sheet$/, "");
+    const top = document.createElement("div"); top.className = "sheet-top";
+    top.innerHTML = '<div class="grab"></div><button class="x" aria-label="Закрыть">✕</button>';
+    top.querySelector(".x").onclick = () => closeSheet(name);
+    sh.prepend(top);
+    let y0 = null, dy = 0;
+    sh.addEventListener("touchstart", e => { y0 = sh.scrollTop <= 0 ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+    sh.addEventListener("touchmove", e => {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy > 0 && sh.scrollTop <= 0) { e.preventDefault(); sh.style.transition = "none"; sh.style.transform = `translateY(${dy}px)`; }
+      else if (dy < 0) y0 = null;                       // scrolling up: leave the gesture to the sheet's own scroll
+    }, { passive: false });
+    sh.addEventListener("touchend", () => {
+      sh.style.transition = ""; sh.style.transform = "";
+      if (y0 !== null && dy > 90) closeSheet(name);
+      y0 = null; dy = 0;
+    });
+  }
   $("mealBg").onclick = $("mealCancel").onclick = () => closeSheet("meal");
   $("setBg").onclick = $("setCancel").onclick = () => closeSheet("set");
 
@@ -1178,7 +1205,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "15";
+  const APP_VERSION = "16";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
