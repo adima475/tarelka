@@ -736,26 +736,67 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 
   // Safari reports a dropped connection as TypeError "Load failed" (Chrome: "Failed to fetch")
   const isNetErr = e => e instanceof TypeError || /load failed|failed to fetch|network|fetch/i.test(e && e.message || "");
+  const isDailyLimit = e => /per-day|per day|free-models-per/i.test(e && e.message || "");
   function errText(e){
-    if (e && e.retry) return escapeHTML(e.message);
+    const st = e && e.status;
+    if (isDailyLimit(e)) return "Исчерпан дневной лимит бесплатных запросов OpenRouter для вашего ключа (около 50 в день). Он обнулится завтра. Если пополнить счёт OpenRouter на $10, лимит станет 1000 запросов в день.";
+    if (st === 401) return "OpenRouter не принял ключ. Откройте ⚙︎ и вставьте ключ заново, целиком, без пробелов.";
+    if (st === 402) return "На аккаунте OpenRouter отрицательный баланс — бесплатные модели не работают, пока его не пополнить.";
+    if (e && e.retry) return escapeHTML(e.message) + (e.tried > 1 ? ` (пробовал ${e.tried} модели)` : "");
     if (isNetErr(e)) return "Связь с ИИ прервалась. Частые причины: слабый интернет, приложение свернули или экран заблокировался во время ответа, бесплатная модель слишком долго думала. Попробуйте ещё раз и не сворачивайте приложение, пока идёт ответ.";
     return "Ошибка: " + escapeHTML(e && e.message || String(e));
   }
-  // one automatic retry when the connection drops or the reply comes back empty
-  // (with openrouter/free the retry is usually served by a different free model); other errors are reported as they are
-  const retryable = e => isNetErr(e) || (e && e.retry);
-  async function askAI(userText, photo, onProgress){
-    try { return await callAI(userText, photo, onProgress); }
-    catch (e) {
-      if (!retryable(e)) throw e;
-      if (onProgress) onProgress(-1);
-      return await callAI(userText, photo, onProgress);
-    }
-  }
+  // errors worth trying again, preferably on another model: dropped connection, empty/garbled reply,
+  // rate limits and outages of one free model. Not retried: a bad key, no credit, the daily free limit.
+  const retryable = e => !!e && !isDailyLimit(e) && e.status !== 401 && e.status !== 402 && e.status !== 403 &&
+    (isNetErr(e) || e.retry || e.status === 429 || e.status === 404 || e.status >= 500 ||
+     /rate|limit|unavailable|no endpoints|overload|timeout|upstream|provider returned error|busy/i.test(e.message || ""));
   const emptyErr = msg => Object.assign(new Error(msg), { retry: true });
 
-  async function callAI(userText, photo, onProgress){
-    const p = settings.provider, cfg = PROVIDERS[p], model = settings.model || cfg.model, key = settings.key.trim();
+  // OpenRouter's free list changes often and openrouter/free may pick a tiny model that cannot write a long JSON menu,
+  // so we choose strong free models ourselves from the live list and fall back from one to the next.
+  let freeList = null;
+  async function goodFreeModels(needImage){
+    if (!freeList) {
+      try {
+        const j = await (await fetch("https://openrouter.ai/api/v1/models")).json();
+        const weak = /lfm|mini|nano|lightning|code|flint|tiny|small|(^|[-/_:])[1-9](\.\d+)?b\b/i;
+        const strong = /gemma-[3-9]-(2[6-9]|[3-9]\d)b|ultra|super|deepseek|qwen.*(32|72|235)b|llama-3\.3-70b|llama-4|glm|kimi|gpt-oss-120b|mistral-(medium|large)/i;
+        freeList = (j.data || [])
+          .filter(m => /:free$/.test(m.id) && m.pricing && +m.pricing.prompt === 0 && +m.pricing.completion === 0 && !weak.test(m.id))
+          .map(m => ({ id: m.id, img: ((m.architecture && m.architecture.input_modalities) || []).includes("image"),
+                       score: (strong.test(m.id) ? 1e9 : 0) + (/reasoning|think/i.test(m.id) ? -1e8 : 0) + (m.context_length || 0) }))
+          .sort((a, b) => b.score - a.score);
+      } catch { freeList = []; }
+    }
+    return freeList.filter(m => !needImage || m.img).map(m => m.id);
+  }
+  // `parse` runs inside the loop, so a reply in the wrong format also moves on to the next model
+  async function askAI(userText, photo, onProgress, parse){
+    const p = settings.provider, first = settings.model || PROVIDERS[p].model;
+    let models = [first, first];
+    if (p === "openrouter") {
+      const good = await goodFreeModels(!!photo);
+      models = first === "openrouter/free" ? [...good.slice(0, 3), "openrouter/free"] : [first, ...good.filter(m => m !== first).slice(0, 2), "openrouter/free"];
+    }
+    let last;
+    for (let i = 0; i < models.length; i++) {
+      if (i && onProgress) onProgress(-1, i + 1, models.length);
+      try {
+        const txt = await callAI(userText, photo, onProgress, models[i]);
+        if (!parse) return txt;
+        try { return parse(txt); } catch { throw emptyErr("ИИ ответил не в том формате"); }
+      } catch (e) {
+        last = e; e.tried = i + 1;
+        if (!retryable(e)) throw e;
+      }
+    }
+    throw last;
+  }
+  const retryMsg = (n, i, total) => n < 0 ? `Не получилось, пробую другую модель (${i} из ${total})…` : null;
+
+  async function callAI(userText, photo, onProgress, modelOverride){
+    const p = settings.provider, cfg = PROVIDERS[p], model = modelOverride || settings.model || cfg.model, key = settings.key.trim();
     if (p === "gemini") {
       const parts = [{ text: userText }];
       if (photo) parts.push({ inline_data: { mime_type: "image/jpeg", data: photo.split(",")[1] } });
@@ -764,7 +805,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         body: JSON.stringify({ contents: [{ role:"user", parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } })
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
+      if (!r.ok) throw Object.assign(new Error((j.error && j.error.message) || ("HTTP " + r.status)), { status: r.status });
       return (j.candidates?.[0]?.content?.parts || []).map(x => x.text || "").join("");
     }
     const url = p === "openrouter" ? "https://openrouter.ai/api/v1/chat/completions" : "https://api.deepseek.com/chat/completions";
@@ -780,7 +821,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     const r = await fetch(url, { method:"POST", headers, body: JSON.stringify(req) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
-      throw new Error((j.error && (j.error.message || j.error)) || ("HTTP " + r.status));
+      const raw = j.error && j.error.metadata && j.error.metadata.raw ? " " + j.error.metadata.raw : "";
+      throw Object.assign(new Error(((j.error && (j.error.message || j.error)) || ("HTTP " + r.status)) + raw), { status: r.status });
     }
     let acc = "", buf = "", done = false, finish = "";
     const handle = line => {
@@ -789,7 +831,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const payload = line.slice(5).trim();
       if (payload === "[DONE]") { done = true; return; }
       let o; try { o = JSON.parse(payload); } catch { return; }
-      if (o.error) throw new Error(o.error.message || String(o.error));
+      if (o.error) throw emptyErr("Бесплатная модель оборвала ответ: " + (o.error.message || String(o.error)));
       const ch = o.choices && o.choices[0];
       if (ch && ch.finish_reason) finish = ch.finish_reason;
       const piece = (ch && ch.delta && ch.delta.content) || (ch && ch.message && ch.message.content) || (ch && ch.text) || "";
@@ -821,7 +863,10 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     s = String(s).replace(/```(?:json)?/gi, "").trim();
     const a = s.indexOf("{"), b = s.lastIndexOf("}");
     if (a < 0 || b < a) throw new Error("ИИ ответил не в том формате");
-    return JSON.parse(s.slice(a, b + 1));
+    const body = s.slice(a, b + 1);
+    try { return JSON.parse(body); }
+    // small slips free models make: trailing commas, // comments, decimal commas inside numbers
+    catch { return JSON.parse(body.replace(/\/\/[^\n"]*$/gm, "").replace(/,\s*([}\]])/g, "$1").replace(/(:\s*-?\d+),(\d+)/g, "$1.$2")); }
   }
 
   async function analyze(){
@@ -832,8 +877,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     $("analyze").disabled = true;
     setStatus('<span class="spinner"></span>Считаю калории…');
     try {
-      const d = parseJSON(await askAI(PROMPT + (text ? "\n\nОписание пользователя: " + text : ""), usePhoto ? pending.photo : null,
-        n => setStatus('<span class="spinner"></span>' + (n < 0 ? "Связь прервалась, пробую ещё раз…" : "ИИ отвечает…"))));
+      const d = await askAI(PROMPT + (text ? "\n\nОписание пользователя: " + text : ""), usePhoto ? pending.photo : null,
+        (n, i, t) => setStatus('<span class="spinner"></span>' + (retryMsg(n, i, t) || "ИИ отвечает…")), parseJSON);
       if (d.error) { setStatus(escapeHTML(String(d.error)), "err"); return; }
       $("mName").value = d.name || "";
       $("mK").value = num(d.calories); $("mP").value = num(d.protein); $("mF").value = num(d.fat); $("mC").value = num(d.carbs);
@@ -974,10 +1019,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     $("menuGo").disabled = true; if (!keepPrev) $("menuOut").innerHTML = "";
     st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
     try {
-      const meals = normalizeMenu(parseJSON(await askAI(prompt, null, n => {
-        st.innerHTML = '<span class="spinner"></span>' + (n < 0 ? "Не получилось, пробую ещё раз…"
-          : "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
-      })));
+      const meals = await askAI(prompt, null, (n, i, t) => {
+        st.innerHTML = '<span class="spinner"></span>' + (retryMsg(n, i, t) || "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
+      }, s => normalizeMenu(parseJSON(s)));
       const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
@@ -1098,7 +1142,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "12";
+  const APP_VERSION = "13";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
