@@ -153,6 +153,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 .stats b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
 .stats span{font-size:11px;color:var(--muted)}
 /* menu */
+.mwhen{font-size:12px;color:var(--muted);margin:4px 0 6px}
 .mtotal{background:var(--accent-soft);border-radius:14px;padding:12px;margin:14px 0 4px;font-size:14px}
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
 .mgrid span{display:block;font-size:11px;color:var(--muted)}
@@ -858,12 +859,17 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     };
     if (r.body && r.body.getReader) {
       const reader = r.body.getReader(), dec = new TextDecoder();
-      while (!done) {
-        const { value, done: end } = await reader.read();
-        if (end) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop();
-        for (const l of lines) { handle(l); if (done) break; }
+      try {
+        while (!done) {
+          const { value, done: end } = await reader.read();
+          if (end) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n"); buf = lines.pop();
+          for (const l of lines) { handle(l); if (done) break; }
+        }
+      } catch (e) {
+        // Safari may drop the connection right after the last token: keep an answer that is already complete
+        if (!(isNetErr(e) && /\}\s*(```)?\s*$/.test(acc.trim()))) throw e;
       }
       if (buf) handle(buf);
       try { reader.cancel(); } catch {}
@@ -873,7 +879,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       txt.split("\n").forEach(handle);
     }
     if (!acc.trim()) throw emptyErr("ИИ прислал пустой ответ" + (finish === "length" ? " (не хватило лимита длины)" : "") +
-      ". Попробуйте ещё раз — бесплатный роутер каждый раз выбирает другую модель. Если повторяется, поставьте в ⚙︎ конкретную модель с окончанием :free.");
+      ". Бесплатные модели сейчас перегружены — попробуйте ещё раз через минуту-другую.");
     if (finish === "length" && !/\}\s*$/.test(acc.replace(/```/g, "").trim())) throw emptyErr("Ответ ИИ оборвался на середине — попробуйте ещё раз или уменьшите число приёмов пищи.");
     return acc;
   }
@@ -957,6 +963,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     $("menuPrefs").value = settings.menuPrefs || "";
     setMenuScope(menuScope);
     renderMenu(store.get("tarelka.menu", null));
+    if (!menuBusy) { $("menuStatus").className = "status"; $("menuStatus").textContent = ""; }   // no stale error from an earlier run
     openSheet("menu");
   };
   $("menuBg").onclick = $("menuClose").onclick = () => closeSheet("menu");
@@ -993,6 +1000,12 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const fix = document.createElement("button"); fix.className = "madd"; fix.style.background = "var(--card)";
       fix.textContent = "🔧 Подогнать под мои КБЖУ"; fix.onclick = () => adjustMenu(saved, got);
       tot.append(fix);
+    }
+    if (saved.created) {
+      const d = new Date(saved.created), hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      const when = dayKey(d) === dayKey(new Date()) ? "сегодня в " + hm : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) + " в " + hm;
+      const w = document.createElement("div"); w.className = "mwhen"; w.textContent = "Меню составлено " + when;
+      out.append(w);
     }
     out.append(tot);
     meals.forEach((m, idx) => {
@@ -1033,9 +1046,12 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     return bad;
   }
   const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
-  async function runMenu(prompt, T, keepPrev){
+  let menuBusy = false;
+  async function runMenu(prompt, T){
     const st = $("menuStatus");
-    $("menuGo").disabled = true; if (!keepPrev) $("menuOut").innerHTML = "";
+    if (menuBusy) return;
+    menuBusy = true; $("menuGo").disabled = true;
+    $("menuOut").style.opacity = ".45";            // the previous menu stays visible (dimmed) until the new one arrives
     st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
     try {
       const meals = await askAI(prompt, null, (n, i, t) => {
@@ -1044,8 +1060,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
-      st.className = "status err"; st.innerHTML = errText(e);
-    } finally { $("menuGo").disabled = false; }
+      st.className = "status err";
+      st.innerHTML = errText(e) + ($("menuOut").children.length ? "<br>Новое меню не составлено — ниже ваше предыдущее." : "");
+    } finally { menuBusy = false; $("menuGo").disabled = false; $("menuOut").style.opacity = ""; }
   }
   $("menuGo").onclick = () => {
     const st = $("menuStatus");
@@ -1161,7 +1178,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "14";
+  const APP_VERSION = "15";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
