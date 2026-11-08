@@ -15,19 +15,22 @@
 <style>
 :root{
   --bg:#f4f5f7;--card:#ffffff;--text:#14161a;--muted:#6b7280;--line:#e5e7eb;
-  --accent:#16a34a;--accent-soft:#dcfce7;--p:#2563eb;--f:#d97706;--c:#db2777;--danger:#dc2626;
+  --accent:#16a34a;--accent-soft:#dcfce7;--p:#2563eb;--f:#d97706;--c:#db2777;--danger:#dc2626;--w:#0ea5e9;
+  --ok-bg:#dcfce7;--ok-tx:#166534;--over-bg:#fee2e2;--over-tx:#991b1b;--under-bg:#fef3c7;--under-tx:#92400e;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#0f1115;--card:#181b21;--text:#f3f4f6;--muted:#9ca3af;--line:#2a2e36;
-    --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;
+    --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;--w:#38bdf8;
+    --ok-bg:#14321f;--ok-tx:#86efac;--over-bg:#3b1418;--over-tx:#fca5a5;--under-bg:#3a2a0c;--under-tx:#fcd34d;
     --shadow:none;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0f1115;--card:#181b21;--text:#f3f4f6;--muted:#9ca3af;--line:#2a2e36;
-  --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;
+  --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;--w:#38bdf8;
+  --ok-bg:#14321f;--ok-tx:#86efac;--over-bg:#3b1418;--over-tx:#fca5a5;--under-bg:#3a2a0c;--under-tx:#fcd34d;
   --shadow:none;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -36,9 +39,10 @@ html,body{margin:0;background:var(--bg);color:var(--text);
 body{padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 110px)}
 .wrap{max-width:520px;margin:0 auto}
 header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+header .btns{display:flex;gap:8px}
 h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .iconbtn{border:0;background:var(--card);color:var(--text);width:40px;height:40px;border-radius:12px;
-  box-shadow:var(--shadow);font-size:20px;cursor:pointer}
+  box-shadow:var(--shadow);font-size:19px;cursor:pointer}
 .daynav{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px}
 .daynav button{border:0;background:none;color:var(--accent);font-size:22px;padding:4px 12px;cursor:pointer}
 .daynav button:disabled{opacity:.25}
@@ -55,6 +59,17 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .macro .row b{font-variant-numeric:tabular-nums}
 .bar{height:7px;border-radius:9px;background:var(--line);overflow:hidden;margin-top:4px}
 .bar i{display:block;height:100%;border-radius:9px;width:0;transition:width .4s}
+.minirow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.minirow .card{margin:0;padding:14px}
+.mini-t{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.mini-v{font-size:22px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.mini-v small{font-size:13px;font-weight:500;color:var(--muted)}
+.mini-s{font-size:12px;color:var(--muted);min-height:16px}
+.wbtns{display:flex;gap:6px;margin-top:10px}
+.wbtns button{flex:1;border:0;border-radius:10px;padding:8px 0;font:inherit;font-size:14px;font-weight:600;cursor:pointer;
+  background:var(--bg);color:var(--w)}
+.wbtns button.minus{flex:.6;color:var(--muted)}
+#weightCard{cursor:pointer}
 h2{font-size:18px;margin:6px 4px 10px}
 .entry{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
 .entry:active{opacity:.6}
@@ -81,17 +96,24 @@ h2{font-size:18px;margin:6px 4px 10px}
 .sheet-bg.open{display:block}
 .sheet .inner{max-width:520px;margin:0 auto}
 .sheet h3{margin:0 0 14px;font-size:20px}
+.sheet h4{margin:22px 0 4px;font-size:16px}
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
 input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);
   border-radius:12px;padding:12px}
 textarea{min-height:80px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.grid4 label{margin-top:8px}
+.grid2 label,.grid3 label,.grid4 label{margin-top:8px}
+.seg{display:flex;background:var(--bg);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:none;color:var(--text);font:inherit;font-size:14px;padding:9px 4px;border-radius:9px;cursor:pointer}
+.seg button.on{background:var(--card);box-shadow:var(--shadow);font-weight:600;color:var(--accent)}
 .btnrow{display:flex;gap:10px;margin-top:18px}
 .btnrow button{flex:1;border:0;border-radius:14px;padding:14px;font:inherit;font-weight:600;cursor:pointer}
 .preview{width:100%;max-height:260px;object-fit:cover;border-radius:16px;display:none;margin-bottom:8px}
 .hint{font-size:13px;color:var(--muted);margin-top:6px}
 .hint a{color:var(--accent)}
+.calcres{font-size:14px;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);display:none}
 .status{margin-top:12px;font-size:14px;min-height:20px}
 .status.err{color:var(--danger)}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
@@ -103,13 +125,46 @@ textarea{min-height:80px;resize:vertical}
 .update.show{display:flex}
 .update button{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
 .ver{font-size:12px;color:var(--muted);text-align:center;margin-top:14px}
+/* calendar */
+.calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.calhead button{border:0;background:var(--bg);color:var(--accent);width:40px;height:36px;border-radius:10px;font-size:20px;cursor:pointer}
+.calhead button:disabled{opacity:.3}
+.calhead b{font-size:17px;text-transform:capitalize}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .wd{font-size:11px;color:var(--muted);text-align:center;padding-bottom:2px}
+.cell{border:0;font:inherit;color:var(--text);background:var(--bg);border-radius:10px;min-height:52px;padding:4px 2px;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;cursor:pointer;position:relative}
+.cell .d{font-size:13px;font-weight:600}
+.cell .k{font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:600}
+.cell .drop{position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--w)}
+.cell.blank{background:none;cursor:default}
+.cell.future{opacity:.35;cursor:default}
+.cell.today{outline:2px solid var(--accent);outline-offset:-2px}
+.cell.ok{background:var(--ok-bg)} .cell.ok .k{color:var(--ok-tx)}
+.cell.over{background:var(--over-bg)} .cell.over .k{color:var(--over-tx)}
+.cell.under{background:var(--under-bg)} .cell.under .k{color:var(--under-tx)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stats div{background:var(--bg);border-radius:12px;padding:10px;text-align:center}
+.stats b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.stats span{font-size:11px;color:var(--muted)}
+/* weight */
+.chart{width:100%;height:auto;display:block;margin-top:8px}
+.wlist .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:15px}
+.wlist .row:first-child{border-top:0}
+.wlist .row b{font-variant-numeric:tabular-nums}
+.wlist .diff{font-size:12px;margin-left:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Тарелка</h1>
-    <button class="iconbtn" id="openSettings" aria-label="Настройки">⚙︎</button>
+    <div class="btns">
+      <button class="iconbtn" id="openCal" aria-label="Календарь">📅</button>
+      <button class="iconbtn" id="openSettings" aria-label="Настройки">⚙︎</button>
+    </div>
   </header>
 
   <div class="update" id="updateBar"><span>Вышла новая версия</span><button id="updateBtn">Обновить</button></div>
@@ -123,9 +178,9 @@ textarea{min-height:80px;resize:vertical}
   <div class="card summary">
     <div class="ring">
       <svg width="132" height="132" viewBox="0 0 132 132">
-        <circle cx="66" cy="66" r="56" fill="none" stroke="var(--line)" stroke-width="12"/>
-        <circle id="ringArc" cx="66" cy="66" r="56" fill="none" stroke="var(--accent)" stroke-width="12"
-          stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="351.86" style="transition:stroke-dashoffset .5s"/>
+        <circle cx="66" cy="66" r="56" fill="none" style="stroke:var(--line)" stroke-width="12"/>
+        <circle id="ringArc" cx="66" cy="66" r="56" fill="none" style="stroke:var(--accent);transition:stroke-dashoffset .5s" stroke-width="12"
+          stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="351.86"/>
       </svg>
       <div class="center"><div class="big" id="kcalLeft">0</div><div class="small" id="kcalLeftLbl">осталось ккал</div></div>
     </div>
@@ -134,6 +189,26 @@ textarea{min-height:80px;resize:vertical}
       <div class="macro"><div class="row"><span>Жиры</span><b id="fTxt">0 / 0 г</b></div><div class="bar"><i id="fBar" style="background:var(--f)"></i></div></div>
       <div class="macro"><div class="row"><span>Углеводы</span><b id="cTxt">0 / 0 г</b></div><div class="bar"><i id="cBar" style="background:var(--c)"></i></div></div>
       <div class="macro" style="font-size:13px;color:var(--muted)">Съедено: <b id="eatenTxt" style="color:var(--text)">0</b> из <span id="goalTxt">0</span> ккал</div>
+    </div>
+  </div>
+
+  <div class="minirow">
+    <div class="card" id="waterCard">
+      <div class="mini-t"><span>💧 Вода</span><span id="waterGoalTxt"></span></div>
+      <div class="mini-v" id="waterTxt">0 <small>мл</small></div>
+      <div class="bar"><i id="waterBar" style="background:var(--w)"></i></div>
+      <div class="wbtns">
+        <button class="minus" id="waterMinus" aria-label="Убрать 250 мл">−</button>
+        <button id="water250">+250</button>
+        <button id="water500">+500</button>
+      </div>
+    </div>
+    <div class="card" id="weightCard">
+      <div class="mini-t"><span>⚖︎ Вес</span><span style="color:var(--accent)">＋</span></div>
+      <div class="mini-v" id="weightTxt">— <small>кг</small></div>
+      <div class="mini-s" id="weightSub">Нажмите, чтобы записать</div>
+      <div class="bar"><i id="weightBar" style="background:var(--accent)"></i></div>
+      <div class="mini-s" id="weightGoalTxt" style="margin-top:6px"></div>
     </div>
   </div>
 
@@ -147,7 +222,7 @@ textarea{min-height:80px;resize:vertical}
 </div>
 <input type="file" id="fileInput" accept="image/*" hidden>
 
-<!-- Add meal sheet -->
+<!-- Add / edit meal sheet -->
 <div class="sheet-bg" id="mealBg"></div>
 <div class="sheet" id="mealSheet" role="dialog" aria-modal="true">
   <div class="inner">
@@ -176,12 +251,95 @@ textarea{min-height:80px;resize:vertical}
   </div>
 </div>
 
+<!-- Calendar sheet -->
+<div class="sheet-bg" id="calBg"></div>
+<div class="sheet" id="calSheet" role="dialog" aria-modal="true">
+  <div class="inner">
+    <h3>Календарь</h3>
+    <div class="calhead">
+      <button id="calPrev" aria-label="Предыдущий месяц">‹</button>
+      <b id="calTitle"></b>
+      <button id="calNext" aria-label="Следующий месяц">›</button>
+    </div>
+    <div class="cal" id="calGrid"></div>
+    <div class="legend">
+      <span><i style="background:var(--ok-bg);outline:1px solid var(--ok-tx)"></i>в норме (±10%)</span>
+      <span><i style="background:var(--under-bg);outline:1px solid var(--under-tx)"></i>меньше нормы</span>
+      <span><i style="background:var(--over-bg);outline:1px solid var(--over-tx)"></i>больше нормы</span>
+      <span><i style="background:var(--w);border-radius:50%"></i>норма воды</span>
+    </div>
+    <div class="stats">
+      <div><b id="stDays">0</b><span>дней с записями</span></div>
+      <div><b id="stAvg">0</b><span>ккал в среднем</span></div>
+      <div><b id="stOk">0</b><span>дней в норме</span></div>
+    </div>
+    <div class="hint">Нажмите на день, чтобы открыть его записи.</div>
+    <div class="btnrow"><button class="secondary" id="calClose" style="background:var(--bg)">Закрыть</button></div>
+  </div>
+</div>
+
+<!-- Weight sheet -->
+<div class="sheet-bg" id="wBg"></div>
+<div class="sheet" id="wSheet" role="dialog" aria-modal="true">
+  <div class="inner">
+    <h3>Вес</h3>
+    <div class="grid2">
+      <div><label for="wKg">Вес, кг</label><input id="wKg" type="number" inputmode="decimal" step="0.1" min="20" max="400" placeholder="например 72.5"></div>
+      <div><label for="wDate">Дата</label><input id="wDate" type="date"></div>
+    </div>
+    <div class="btnrow" style="margin-top:10px"><button class="primary" id="wSave">Записать вес</button></div>
+    <div class="status" id="wStatus"></div>
+    <div id="wChartBox"></div>
+    <h4>История</h4>
+    <div class="wlist" id="wList"></div>
+    <div class="btnrow"><button class="secondary" id="wClose" style="background:var(--bg)">Закрыть</button></div>
+  </div>
+</div>
+
 <!-- Settings sheet -->
 <div class="sheet-bg" id="setBg"></div>
 <div class="sheet" id="setSheet" role="dialog" aria-modal="true">
   <div class="inner">
     <h3>Настройки</h3>
-    <label for="sProvider">ИИ-провайдер</label>
+
+    <h4>Моя цель</h4>
+    <div class="seg" id="goalSeg">
+      <button data-v="lose">Похудеть</button>
+      <button data-v="keep">Держать вес</button>
+      <button data-v="gain">Набрать</button>
+    </div>
+    <div class="grid3">
+      <div><label for="pSex">Пол</label><select id="pSex"><option value="m">Муж.</option><option value="f">Жен.</option></select></div>
+      <div><label for="pAge">Возраст</label><input id="pAge" type="number" inputmode="numeric" min="10" max="100"></div>
+      <div><label for="pHeight">Рост, см</label><input id="pHeight" type="number" inputmode="numeric" min="100" max="250"></div>
+    </div>
+    <div class="grid2">
+      <div><label for="pWeight">Текущий вес, кг</label><input id="pWeight" type="number" inputmode="decimal" step="0.1"></div>
+      <div><label for="pTarget">Желаемый вес, кг</label><input id="pTarget" type="number" inputmode="decimal" step="0.1"></div>
+    </div>
+    <label for="pAct">Активность</label>
+    <select id="pAct">
+      <option value="1.2">Минимальная — сидячая работа, без спорта</option>
+      <option value="1.375">Лёгкая — спорт 1–3 раза в неделю</option>
+      <option value="1.55">Средняя — спорт 3–5 раз в неделю</option>
+      <option value="1.725">Высокая — спорт 6–7 раз в неделю</option>
+      <option value="1.9">Очень высокая — физическая работа + спорт</option>
+    </select>
+    <div class="btnrow" style="margin-top:12px"><button class="primary" id="calcGoal">Рассчитать мою норму</button></div>
+    <div class="calcres" id="calcRes"></div>
+
+    <h4>Норма в день</h4>
+    <div class="grid4">
+      <div><label for="gK">Ккал</label><input id="gK" type="number" inputmode="numeric"></div>
+      <div><label for="gP">Белки г</label><input id="gP" type="number" inputmode="numeric"></div>
+      <div><label for="gF">Жиры г</label><input id="gF" type="number" inputmode="numeric"></div>
+      <div><label for="gC">Углев. г</label><input id="gC" type="number" inputmode="numeric"></div>
+    </div>
+    <label for="gW">Вода, мл в день</label>
+    <input id="gW" type="number" inputmode="numeric" step="50">
+
+    <h4>ИИ</h4>
+    <label for="sProvider">Провайдер</label>
     <select id="sProvider">
       <option value="gemini">Google Gemini — бесплатно, понимает фото</option>
       <option value="openrouter">OpenRouter — бесплатные модели (:free)</option>
@@ -192,13 +350,7 @@ textarea{min-height:80px;resize:vertical}
     <input id="sKey" type="password" autocomplete="off" placeholder="Вставьте ключ">
     <label for="sModel">Модель</label>
     <input id="sModel" autocomplete="off">
-    <div class="grid4">
-      <div><label for="gK">Цель ккал</label><input id="gK" type="number" inputmode="numeric"></div>
-      <div><label for="gP">Белки г</label><input id="gP" type="number" inputmode="numeric"></div>
-      <div><label for="gF">Жиры г</label><input id="gF" type="number" inputmode="numeric"></div>
-      <div><label for="gC">Углев. г</label><input id="gC" type="number" inputmode="numeric"></div>
-    </div>
-    <div class="hint">Ключ и записи хранятся только на этом устройстве (в браузере). Запрос с фото уходит напрямую выбранному провайдеру.</div>
+    <div class="hint">Ключ и все записи хранятся только на этом устройстве. Запрос с фото уходит напрямую выбранному провайдеру.</div>
     <div class="btnrow">
       <button class="secondary" id="setCancel" style="background:var(--bg)">Закрыть</button>
       <button class="primary" id="setSave">Сохранить</button>
@@ -215,7 +367,7 @@ textarea{min-height:80px;resize:vertical}
   const $ = id => document.getElementById(id);
   const PROVIDERS = {
     gemini: { model: "gemini-flash-latest", vision: true,
-      hint: 'Бесплатный ключ: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (войти через Google → Create API key).' },
+      hint: 'Бесплатный ключ: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (войти через Google → Create API key). Доступен не во всех странах.' },
     openrouter: { model: "openrouter/free", vision: true,
       hint: 'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. <b>openrouter/free</b> сам выбирает доступную бесплатную модель. Можно указать конкретную — с окончанием <b>:free</b>.' },
     deepseek: { model: "deepseek-chat", vision: false,
@@ -227,24 +379,37 @@ textarea{min-height:80px;resize:vertical}
     get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
   };
-  let settings = Object.assign({ provider:"gemini", key:"", model:"", goal:{k:2000,p:120,f:65,c:230} }, store.get("tarelka.settings", {}));
+  const DEFAULT_PROFILE = { goal:"lose", sex:"m", age:"", height:"", target:"", act:"1.375" };
+  let settings = Object.assign({ provider:"gemini", key:"", model:"", goal:{k:2000,p:120,f:65,c:230}, water:2000 }, store.get("tarelka.settings", {}));
+  settings.profile = Object.assign({}, DEFAULT_PROFILE, settings.profile || {});
+  if (!settings.water) settings.water = 2000;
   // the old default free model was withdrawn — move anyone still pinned to it onto the free router
   if (settings.model === "google/gemma-3-27b-it:free") { settings.model = ""; store.set("tarelka.settings", settings); }
   let entries = store.get("tarelka.entries", []);
+  let water = store.get("tarelka.water", {});        // { "YYYY-MM-DD": ml }
+  let weights = store.get("tarelka.weights", []);    // [{ day:"YYYY-MM-DD", kg }]
   let dayOffset = 0;
   let pending = { photo:null, thumb:null };
 
   // ---------- dates ----------
-  const dayKey = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const pad = n => String(n).padStart(2, "0");
+  const dayKey = d => d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  const parseDay = k => { const [y,m,d] = k.split("-").map(Number); return new Date(y, m-1, d); };
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const currentDay = () => { const d = new Date(); d.setDate(d.getDate()+dayOffset); return d; };
+  const fmtDay = d => d.toLocaleDateString("ru-RU", { day:"numeric", month:"short" });
   function dayLabel(){
     if (dayOffset === 0) return "Сегодня";
     if (dayOffset === -1) return "Вчера";
     return currentDay().toLocaleDateString("ru-RU", { weekday:"short", day:"numeric", month:"long" });
   }
 
-  // ---------- render ----------
   const num = v => Math.round(Number(v) || 0);
+  const kg1 = v => (Math.round(v * 10) / 10).toLocaleString("ru-RU");
+  const sortedWeights = () => weights.slice().sort((a,b) => a.day < b.day ? -1 : 1);
+  const kcalByDay = () => entries.reduce((m,e) => (m[e.day] = (m[e.day]||0) + num(e.k), m), {});
+
+  // ---------- main render ----------
   function render(){
     const key = dayKey(currentDay());
     const list = entries.filter(e => e.day === key).sort((a,b) => a.ts - b.ts);
@@ -257,13 +422,14 @@ textarea{min-height:80px;resize:vertical}
     $("kcalLeftLbl").textContent = left >= 0 ? "осталось ккал" : "перебор ккал";
     const C = 351.86, frac = Math.min(t.k / (g.k || 1), 1);
     $("ringArc").setAttribute("stroke-dashoffset", C * (1 - frac));
-    $("ringArc").setAttribute("stroke", left >= 0 ? "var(--accent)" : "var(--danger)");
+    $("ringArc").style.stroke = left >= 0 ? "var(--accent)" : "var(--danger)";
     for (const m of ["p","f","c"]) {
       $(m+"Txt").textContent = num(t[m]) + " / " + num(g[m]) + " г";
       $(m+"Bar").style.width = Math.min(100, t[m] / (g[m] || 1) * 100) + "%";
     }
     $("eatenTxt").textContent = t.k;
     $("goalTxt").textContent = g.k;
+    renderWater(); renderWeightCard();
 
     const box = $("list");
     box.innerHTML = "";
@@ -289,6 +455,150 @@ textarea{min-height:80px;resize:vertical}
     }
   }
 
+  // ---------- water ----------
+  function renderWater(){
+    const ml = water[dayKey(currentDay())] || 0, goal = settings.water || 2000;
+    $("waterTxt").innerHTML = ml + " <small>мл</small>";
+    $("waterGoalTxt").textContent = "из " + goal;
+    $("waterBar").style.width = Math.min(100, ml / goal * 100) + "%";
+  }
+  function addWater(delta){
+    const k = dayKey(currentDay());
+    water[k] = Math.max(0, (water[k] || 0) + delta);
+    if (!water[k]) delete water[k];
+    store.set("tarelka.water", water); renderWater();
+  }
+  $("water250").onclick = () => addWater(250);
+  $("water500").onclick = () => addWater(500);
+  $("waterMinus").onclick = () => addWater(-250);
+
+  // ---------- weight ----------
+  function renderWeightCard(){
+    const ws = sortedWeights(), p = settings.profile, target = parseFloat(p.target);
+    if (!ws.length) {
+      $("weightTxt").innerHTML = "— <small>кг</small>"; $("weightSub").textContent = "Нажмите, чтобы записать";
+      $("weightBar").style.width = "0"; $("weightGoalTxt").textContent = target ? "Цель: " + kg1(target) + " кг" : ""; return;
+    }
+    const start = ws[0].kg, cur = ws[ws.length-1].kg, diff = cur - start;
+    $("weightTxt").innerHTML = kg1(cur) + " <small>кг</small>";
+    $("weightSub").textContent = ws.length > 1 ? (diff > 0 ? "+" : diff < 0 ? "−" : "±") + kg1(Math.abs(diff)) + " кг с " + fmtDay(parseDay(ws[0].day)) : "первая запись";
+    if (target && start !== target) {
+      const frac = Math.max(0, Math.min(1, (start - cur) / (start - target)));
+      $("weightBar").style.width = frac * 100 + "%";
+      const rest = Math.abs(cur - target);
+      $("weightGoalTxt").textContent = rest < 0.05 ? "Цель достигнута! 🎉" : "До цели " + kg1(rest) + " кг";
+    } else { $("weightBar").style.width = "0"; $("weightGoalTxt").textContent = target ? "Цель: " + kg1(target) + " кг" : "Цель не задана"; }
+  }
+  function openWeight(){
+    const ws = sortedWeights();
+    $("wDate").value = dayKey(new Date()); $("wDate").max = dayKey(new Date());
+    $("wKg").value = ws.length ? ws[ws.length-1].kg : (settings.profile.weight || "");
+    $("wStatus").textContent = "";
+    renderWeightSheet(); openSheet("w");
+  }
+  function renderWeightSheet(){
+    const ws = sortedWeights(), target = parseFloat(settings.profile.target) || null;
+    $("wChartBox").innerHTML = ws.length >= 2 ? chartSVG(ws, target) : '<div class="hint">График появится после двух записей.</div>';
+    const box = $("wList"); box.innerHTML = "";
+    if (!ws.length) { box.innerHTML = '<div class="empty">Записей пока нет</div>'; return; }
+    ws.slice().reverse().forEach((w, i, arr) => {
+      const row = document.createElement("div"); row.className = "row";
+      const left = document.createElement("span"); left.textContent = parseDay(w.day).toLocaleDateString("ru-RU", { day:"numeric", month:"long", year:"numeric" });
+      const right = document.createElement("span");
+      const b = document.createElement("b"); b.textContent = kg1(w.kg) + " кг"; right.append(b);
+      const prev = arr[i+1];
+      if (prev) {
+        const d = w.kg - prev.kg, s = document.createElement("span"); s.className = "diff";
+        s.textContent = (d > 0 ? "+" : d < 0 ? "−" : "±") + kg1(Math.abs(d));
+        s.style.color = d === 0 ? "var(--muted)" : ((d < 0) === (settings.profile.goal !== "gain") ? "var(--accent)" : "var(--danger)");
+        right.append(s);
+      }
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label","Удалить");
+      del.onclick = () => { if (confirm("Удалить запись веса за " + left.textContent + "?")) { weights = weights.filter(x => x.day !== w.day); store.set("tarelka.weights", weights); renderWeightSheet(); render(); } };
+      right.append(del);
+      row.append(left, right); box.append(row);
+    });
+  }
+  function chartSVG(ws, target){
+    const pts = ws.slice(-60), W = 320, H = 150, L = 34, R = 8, T = 10, B = 22;
+    const vals = pts.map(p => p.kg).concat(target ? [target] : []);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+    const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+    const t0 = parseDay(pts[0].day).getTime(), t1 = parseDay(pts[pts.length-1].day).getTime() || t0 + 1;
+    const x = d => L + (W - L - R) * ((parseDay(d).getTime() - t0) / Math.max(1, t1 - t0));
+    const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    const line = pts.map(p => x(p.day).toFixed(1) + "," + y(p.kg).toFixed(1)).join(" ");
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="График веса">`;
+    for (const v of [hi - pad, (hi + lo) / 2, lo + pad]) {
+      s += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)" stroke-width="1"/>`;
+      s += `<text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" style="fill:var(--muted)">${kg1(v)}</text>`;
+    }
+    if (target) s += `<line x1="${L}" x2="${W-R}" y1="${y(target)}" y2="${y(target)}" style="stroke:var(--accent)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="${W-R}" y="${y(target)-5}" text-anchor="end" font-size="10" style="fill:var(--accent)">цель ${kg1(target)}</text>`;
+    s += `<polyline points="${line}" fill="none" style="stroke:var(--p)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for (const p of pts) s += `<circle cx="${x(p.day)}" cy="${y(p.kg)}" r="3" style="fill:var(--p)"/>`;
+    s += `<text x="${L}" y="${H-6}" font-size="10" style="fill:var(--muted)">${fmtDay(parseDay(pts[0].day))}</text>`;
+    s += `<text x="${W-R}" y="${H-6}" text-anchor="end" font-size="10" style="fill:var(--muted)">${fmtDay(parseDay(pts[pts.length-1].day))}</text>`;
+    return s + "</svg>";
+  }
+  function saveWeight(day, kg){
+    weights = weights.filter(w => w.day !== day); weights.push({ day, kg: Math.round(kg * 10) / 10 });
+    store.set("tarelka.weights", weights);
+  }
+  $("weightCard").onclick = openWeight;
+  $("wSave").onclick = () => {
+    const kg = parseFloat(String($("wKg").value).replace(",", ".")), day = $("wDate").value || dayKey(new Date());
+    if (!(kg >= 20 && kg <= 400)) { $("wStatus").className = "status err"; $("wStatus").textContent = "Введите вес от 20 до 400 кг."; return; }
+    saveWeight(day, kg);
+    $("wStatus").className = "status"; $("wStatus").textContent = "Записано: " + kg1(kg) + " кг";
+    renderWeightSheet(); render();
+  };
+  $("wBg").onclick = $("wClose").onclick = () => closeSheet("w");
+
+  // ---------- calendar ----------
+  let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  function dayClass(k){
+    const g = settings.goal.k || 1, r = k / g;
+    return r > 1.1 ? "over" : r < 0.9 ? "under" : "ok";
+  }
+  function renderCal(){
+    const y = calMonth.getFullYear(), m = calMonth.getMonth(), today = startOfDay(new Date());
+    $("calTitle").textContent = calMonth.toLocaleDateString("ru-RU", { month:"long", year:"numeric" });
+    $("calNext").disabled = y === today.getFullYear() && m === today.getMonth();
+    const byDay = kcalByDay(), grid = $("calGrid"); grid.innerHTML = "";
+    for (const w of ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]) { const d = document.createElement("div"); d.className = "wd"; d.textContent = w; grid.append(d); }
+    const first = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < first; i++) { const b = document.createElement("div"); b.className = "cell blank"; grid.append(b); }
+    let logged = 0, sum = 0, ok = 0;
+    for (let d = 1; d <= days; d++) {
+      const date = new Date(y, m, d), k = dayKey(date), kcal = byDay[k];
+      const cell = document.createElement("button"); cell.className = "cell";
+      cell.innerHTML = `<span class="d">${d}</span>`;
+      if (date > today) { cell.classList.add("future"); cell.disabled = true; }
+      if (date.getTime() === today.getTime()) cell.classList.add("today");
+      if (kcal) {
+        const cls = dayClass(kcal); cell.classList.add(cls);
+        const s = document.createElement("span"); s.className = "k"; s.textContent = kcal; cell.append(s);
+        logged++; sum += kcal; if (cls === "ok") ok++;
+      }
+      if ((water[k] || 0) >= (settings.water || 2000)) { const dr = document.createElement("i"); dr.className = "drop"; cell.append(dr); }
+      cell.setAttribute("aria-label", date.toLocaleDateString("ru-RU", { day:"numeric", month:"long" }) + (kcal ? ", " + kcal + " ккал" : ""));
+      if (!(date > today)) cell.onclick = () => {
+        dayOffset = Math.round((date - today) / 86400000);
+        closeSheet("cal"); render();
+      };
+      grid.append(cell);
+    }
+    $("stDays").textContent = logged;
+    $("stAvg").textContent = logged ? Math.round(sum / logged) : "—";
+    $("stOk").textContent = ok;
+  }
+  $("openCal").onclick = () => { const d = currentDay(); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); renderCal(); openSheet("cal"); };
+  $("calPrev").onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCal(); };
+  $("calNext").onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCal(); };
+  $("calBg").onclick = $("calClose").onclick = () => closeSheet("cal");
+
   // ---------- sheets ----------
   function openSheet(name){ $(name+"Sheet").classList.add("open"); $(name+"Bg").classList.add("open"); }
   function closeSheet(name){ $(name+"Sheet").classList.remove("open"); $(name+"Bg").classList.remove("open"); }
@@ -296,7 +606,7 @@ textarea{min-height:80px;resize:vertical}
   $("setBg").onclick = $("setCancel").onclick = () => closeSheet("set");
 
   let editingId = null;
-  const hhmm = d => String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  const hhmm = d => pad(d.getHours()) + ":" + pad(d.getMinutes());
   function resetMeal(){
     pending = { photo:null, thumb:null }; editingId = null;
     $("preview").style.display = "none"; $("preview").removeAttribute("src");
@@ -397,12 +707,12 @@ textarea{min-height:80px;resize:vertical}
     setStatus('<span class="spinner"></span>Считаю калории…');
     try {
       const d = parseJSON(await callAI(text, usePhoto ? pending.photo : null));
-      if (d.error) { setStatus(d.error, "err"); return; }
+      if (d.error) { setStatus(escapeHTML(String(d.error)), "err"); return; }
       $("mName").value = d.name || "";
       $("mK").value = num(d.calories); $("mP").value = num(d.protein); $("mF").value = num(d.fat); $("mC").value = num(d.carbs);
       $("itemsTxt").textContent = Array.isArray(d.items) && d.items.length
         ? "Состав: " + d.items.map(i => `${i.name}${i.grams ? " " + num(i.grams) + " г" : ""} (${num(i.calories)} ккал)`).join(", ") : "";
-      setStatus("Готово" + (d.confidence ? " · точность: " + d.confidence : "") + ". Проверьте и поправьте, если нужно.");
+      setStatus("Готово" + (d.confidence ? " · точность: " + escapeHTML(String(d.confidence)) : "") + ". Проверьте и поправьте, если нужно.");
     } catch (e) {
       let msg = "Ошибка: " + escapeHTML(e.message || String(e));
       if (settings.provider === "openrouter" && /unavailable|free|not found|no endpoints/i.test(e.message || ""))
@@ -433,20 +743,58 @@ textarea{min-height:80px;resize:vertical}
     closeSheet("meal"); render();
   };
 
-  // ---------- settings ----------
+  // ---------- settings & goal calculator ----------
+  let goalType = settings.profile.goal;
+  function setGoalSeg(v){ goalType = v; for (const b of $("goalSeg").children) b.classList.toggle("on", b.dataset.v === v); }
+  for (const b of $("goalSeg").children) b.onclick = () => setGoalSeg(b.dataset.v);
+  function latestWeight(){ const ws = sortedWeights(); return ws.length ? ws[ws.length-1].kg : ""; }
+
   function fillSettings(){
+    const p = settings.profile;
+    setGoalSeg(p.goal);
+    $("pSex").value = p.sex; $("pAge").value = p.age; $("pHeight").value = p.height;
+    $("pWeight").value = latestWeight(); $("pTarget").value = p.target; $("pAct").value = p.act;
+    $("calcRes").style.display = "none";
     $("sProvider").value = settings.provider; $("sKey").value = settings.key;
     $("sModel").value = settings.model || PROVIDERS[settings.provider].model;
     $("providerHint").innerHTML = PROVIDERS[settings.provider].hint;
     $("gK").value = settings.goal.k; $("gP").value = settings.goal.p; $("gF").value = settings.goal.f; $("gC").value = settings.goal.c;
+    $("gW").value = settings.water;
   }
+  $("calcGoal").onclick = () => {
+    const sex = $("pSex").value, age = +$("pAge").value, h = +$("pHeight").value;
+    const w = parseFloat(String($("pWeight").value).replace(",", ".")), act = +$("pAct").value;
+    const res = $("calcRes"); res.style.display = "block";
+    if (!(age >= 10 && age <= 100 && h >= 100 && h <= 250 && w >= 20 && w <= 400)) {
+      res.textContent = "Заполните возраст, рост и текущий вес."; return;
+    }
+    // Mifflin–St Jeor
+    const bmr = 10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161);
+    const tdee = bmr * act;
+    let kcal = goalType === "lose" ? tdee * 0.8 : goalType === "gain" ? tdee + 300 : tdee;
+    kcal = Math.max(kcal, goalType === "lose" ? (sex === "m" ? 1500 : 1200) : 0);
+    kcal = Math.round(kcal / 10) * 10;
+    const prot = Math.round(w * (goalType === "lose" ? 2.0 : goalType === "gain" ? 1.8 : 1.6));
+    const fat = Math.round(w * 0.9);
+    const carbs = Math.max(50, Math.round((kcal - prot * 4 - fat * 9) / 4));
+    const wat = Math.round(w * 30 / 50) * 50;
+    $("gK").value = kcal; $("gP").value = prot; $("gF").value = fat; $("gC").value = carbs; $("gW").value = wat;
+    const what = goalType === "lose" ? "дефицит 20% — примерно −0,5 кг в неделю" : goalType === "gain" ? "профицит +300 ккал — примерно +0,25 кг в неделю" : "поддержание веса";
+    res.innerHTML = `Расход в день ≈ <b>${Math.round(tdee)}</b> ккал. Ваша норма: <b>${kcal}</b> ккал (${what}). Нажмите «Сохранить».`;
+  };
   $("sProvider").onchange = () => { const p = $("sProvider").value; $("sModel").value = PROVIDERS[p].model; $("providerHint").innerHTML = PROVIDERS[p].hint; };
   $("openSettings").onclick = () => { fillSettings(); openSheet("set"); };
   $("setSave").onclick = () => {
     const p = $("sProvider").value, m = $("sModel").value.trim();
+    const wNow = parseFloat(String($("pWeight").value).replace(",", "."));
     settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m,
-      goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 } };
-    store.set("tarelka.settings", settings); closeSheet("set"); render();
+      goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 },
+      water: num($("gW").value) || 2000,
+      profile: { goal: goalType, sex: $("pSex").value, age: $("pAge").value, height: $("pHeight").value,
+        target: $("pTarget").value, act: $("pAct").value } };
+    store.set("tarelka.settings", settings);
+    if (wNow >= 20 && wNow <= 400 && wNow !== latestWeight()) saveWeight(dayKey(new Date()), wNow);
+    closeSheet("set"); render();
   };
 
   $("prevDay").onclick = () => { dayOffset--; render(); };
@@ -454,7 +802,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "6";
+  const APP_VERSION = "7";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
@@ -467,7 +815,7 @@ textarea{min-height:80px;resize:vertical}
     } catch { if (manual) alert("Нет интернета — не удалось проверить обновления."); }
   }
   $("checkUpd").onclick = () => checkUpdate(true);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(false); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { checkUpdate(false); render(); } });
   checkUpdate(false);
 
   render();
