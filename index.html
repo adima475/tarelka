@@ -151,6 +151,22 @@ textarea{min-height:80px;resize:vertical}
 .stats div{background:var(--bg);border-radius:12px;padding:10px;text-align:center}
 .stats b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
 .stats span{font-size:11px;color:var(--muted)}
+/* menu */
+.mtotal{background:var(--accent-soft);border-radius:14px;padding:12px;margin:14px 0 4px;font-size:14px}
+.mtotal b{font-size:17px}
+.meal{border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:10px}
+.meal .mh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.meal .mt{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.meal .mk{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.meal .md{font-weight:600;font-size:16px;margin:2px 0 8px}
+.meal ul{list-style:none;margin:0;padding:0;font-size:14px}
+.meal li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px dashed var(--line)}
+.meal li:first-child{border-top:0}
+.meal li span:last-child{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.meal .mm{font-size:13px;color:var(--muted);margin-top:8px}
+.meal .mr{font-size:13px;margin-top:6px;line-height:1.45}
+.meal .madd{margin-top:10px;width:100%;border:0;border-radius:12px;padding:10px;font:inherit;font-weight:600;cursor:pointer;background:var(--bg);color:var(--accent)}
+.meal .madd:disabled{color:var(--muted);cursor:default}
 /* weight */
 .chart{width:100%;height:auto;display:block;margin-top:8px}
 .wlist .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:15px}
@@ -164,6 +180,7 @@ textarea{min-height:80px;resize:vertical}
   <header>
     <h1>Тарелка</h1>
     <div class="btns">
+      <button class="iconbtn" id="openMenu" aria-label="Меню от ИИ">🍳</button>
       <button class="iconbtn" id="openCal" aria-label="Календарь">📅</button>
       <button class="iconbtn" id="openSettings" aria-label="Настройки">⚙︎</button>
     </div>
@@ -251,6 +268,29 @@ textarea{min-height:80px;resize:vertical}
       <button class="secondary" id="mealCancel" style="background:var(--bg)">Отмена</button>
       <button class="primary" id="mealSave">Сохранить</button>
     </div>
+  </div>
+</div>
+
+<!-- Menu sheet -->
+<div class="sheet-bg" id="menuBg"></div>
+<div class="sheet" id="menuSheet" role="dialog" aria-modal="true">
+  <div class="inner">
+    <h3>Меню от ИИ</h3>
+    <div class="seg" id="menuSeg">
+      <button data-v="day">На весь день</button>
+      <button data-v="rest">На остаток дня</button>
+    </div>
+    <div class="grid2">
+      <div><label for="menuKcal">Калории</label><input id="menuKcal" type="text" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="menuMeals">Приёмов пищи</label>
+        <select id="menuMeals"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
+    </div>
+    <label for="menuPrefs">Пожелания</label>
+    <textarea id="menuPrefs" placeholder="Например: без рыбы, люблю гречку и курицу, готовить не дольше 20 минут, недорогие продукты"></textarea>
+    <div class="btnrow" style="margin-top:10px"><button class="primary" id="menuGo">✨ Составить меню</button></div>
+    <div class="status" id="menuStatus"></div>
+    <div id="menuOut"></div>
+    <div class="btnrow"><button class="secondary" id="menuClose" style="background:var(--bg)">Закрыть</button></div>
   </div>
 </div>
 
@@ -685,9 +725,8 @@ textarea{min-height:80px;resize:vertical}
 "items":[{"name":"компонент","grams":число,"calories":число}],"confidence":"высокая|средняя|низкая"}
 Если на фото нет еды — {"error":"на фото не видно еды"}.`;
 
-  async function callAI(text, photo){
+  async function callAI(userText, photo){
     const p = settings.provider, cfg = PROVIDERS[p], model = settings.model || cfg.model, key = settings.key.trim();
-    const userText = PROMPT + (text ? "\n\nОписание пользователя: " + text : "");
     if (p === "gemini") {
       const parts = [{ text: userText }];
       if (photo) parts.push({ inline_data: { mime_type: "image/jpeg", data: photo.split(",")[1] } });
@@ -727,7 +766,7 @@ textarea{min-height:80px;resize:vertical}
     $("analyze").disabled = true;
     setStatus('<span class="spinner"></span>Считаю калории…');
     try {
-      const d = parseJSON(await callAI(text, usePhoto ? pending.photo : null));
+      const d = parseJSON(await callAI(PROMPT + (text ? "\n\nОписание пользователя: " + text : ""), usePhoto ? pending.photo : null));
       if (d.error) { setStatus(escapeHTML(String(d.error)), "err"); return; }
       $("mName").value = d.name || "";
       $("mK").value = num(d.calories); $("mP").value = num(d.protein); $("mF").value = num(d.fat); $("mC").value = num(d.carbs);
@@ -762,6 +801,107 @@ textarea{min-height:80px;resize:vertical}
       if (!store.set("tarelka.entries", entries)) alert("Не удалось сохранить: хранилище браузера недоступно.");
     }
     closeSheet("meal"); render();
+  };
+
+  // ---------- AI menu ----------
+  let menuScope = "day";
+  const eatenOn = key => entries.filter(e => e.day === key).reduce((s, e) => s + num(e.k), 0);
+  function setMenuScope(v){
+    menuScope = v;
+    for (const b of $("menuSeg").children) b.classList.toggle("on", b.dataset.v === v);
+    const g = settings.goal.k, rest = g - eatenOn(dayKey(currentDay()));
+    $("menuKcal").value = v === "day" ? g : Math.max(0, rest);
+    const h = new Date().getHours();
+    $("menuMeals").value = v === "day" ? 4 : (dayOffset !== 0 ? 3 : h < 11 ? 3 : h < 16 ? 2 : 1);
+    $("menuStatus").className = "status";
+    $("menuStatus").textContent = v === "rest" && rest < 150 ? "На сегодня калорий почти не осталось (" + Math.max(0, rest) + " ккал)." : "";
+  }
+  for (const b of $("menuSeg").children) b.onclick = () => setMenuScope(b.dataset.v);
+  $("openMenu").onclick = () => {
+    $("menuPrefs").value = settings.menuPrefs || "";
+    setMenuScope(menuScope);
+    renderMenu(store.get("tarelka.menu", null));
+    openSheet("menu");
+  };
+  $("menuBg").onclick = $("menuClose").onclick = () => closeSheet("menu");
+
+  const sumBy = (arr, f) => Math.round(arr.reduce((s, x) => s + (parseNum(x[f]) || 0), 0));
+  function normalizeMenu(d){
+    const meals = (Array.isArray(d.meals) ? d.meals : []).map(m => {
+      const ing = (Array.isArray(m.ingredients) ? m.ingredients : []).map(i => ({
+        name: String(i.name || "продукт"), grams: num(i.grams), kcal: num(i.kcal ?? i.calories),
+        p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 }));
+      // totals are summed here from the ingredients, so the numbers on screen always add up
+      return { title: String(m.title || "Приём пищи"), dish: String(m.dish || m.name || ""), recipe: String(m.recipe || ""),
+        ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
+    }).filter(m => m.ingredients.length);
+    if (!meals.length) throw new Error("ИИ не прислал меню — попробуйте ещё раз");
+    return meals;
+  }
+  function renderMenu(saved){
+    const out = $("menuOut"); out.innerHTML = "";
+    if (!saved || !saved.meals || !saved.meals.length) return;
+    const meals = saved.meals, tk = sumBy(meals, "k");
+    const tot = document.createElement("div"); tot.className = "mtotal";
+    tot.innerHTML = `Итого: <b>${tk} ккал</b> · Б ${sumBy(meals,"p")} · Ж ${sumBy(meals,"f")} · У ${sumBy(meals,"c")}` +
+      `<br><span style="color:var(--muted)">Цель была ${saved.target} ккал${Math.abs(tk - saved.target) > saved.target * 0.07 ? " — ИИ промахнулся, поправьте граммовки или составьте заново" : ""}</span>`;
+    out.append(tot);
+    meals.forEach((m, idx) => {
+      const box = document.createElement("div"); box.className = "meal";
+      const head = document.createElement("div"); head.className = "mh";
+      const t = document.createElement("span"); t.className = "mt"; t.textContent = m.title;
+      const k = document.createElement("span"); k.className = "mk"; k.textContent = m.k + " ккал";
+      head.append(t, k);
+      const dish = document.createElement("div"); dish.className = "md"; dish.textContent = m.dish;
+      const ul = document.createElement("ul");
+      for (const i of m.ingredients) {
+        const li = document.createElement("li");
+        const a = document.createElement("span"); a.textContent = i.name;
+        const b = document.createElement("span"); b.textContent = (i.grams ? i.grams + " г · " : "") + i.kcal + " ккал";
+        li.append(a, b); ul.append(li);
+      }
+      const mm = document.createElement("div"); mm.className = "mm"; mm.textContent = `Б ${m.p} · Ж ${m.f} · У ${m.c}`;
+      box.append(head, dish, ul, mm);
+      if (m.recipe) { const r = document.createElement("div"); r.className = "mr"; r.textContent = "🍳 " + m.recipe; box.append(r); }
+      const add = document.createElement("button"); add.className = "madd";
+      add.textContent = m.added ? "✓ Добавлено в дневник" : "+ Добавить в дневник"; add.disabled = !!m.added;
+      add.onclick = () => {
+        const d = currentDay(); if (dayOffset !== 0) d.setHours(12, 0, 0, 0);
+        entries.push({ id: Date.now() + Math.random().toString(36).slice(2), ts: d.getTime(), day: dayKey(d),
+          name: m.dish || m.title, k: m.k, p: m.p, f: m.f, c: m.c, thumb: null });
+        store.set("tarelka.entries", entries);
+        m.added = true; store.set("tarelka.menu", saved);
+        add.textContent = "✓ Добавлено в дневник"; add.disabled = true; render();
+      };
+      box.append(add); out.append(box);
+    });
+  }
+  $("menuGo").onclick = async () => {
+    const st = $("menuStatus");
+    if (!settings.key) { st.className = "status err"; st.textContent = "Сначала добавьте API-ключ в настройках ⚙︎"; return; }
+    const kcal = num($("menuKcal").value), n = +$("menuMeals").value, prefs = $("menuPrefs").value.trim();
+    if (kcal < 100) { st.className = "status err"; st.textContent = "Укажите калории — хотя бы 100."; return; }
+    settings.menuPrefs = prefs; store.set("tarelka.settings", settings);
+    const g = settings.goal, ratio = kcal / (g.k || 2000);
+    const goalTxt = { lose: "похудеть (больше белка, сытные блюда)", keep: "поддерживать вес", gain: "набрать вес" }[settings.profile.goal] || "поддерживать вес";
+    const scope = menuScope === "day" ? "весь день" : "оставшуюся часть дня";
+    const prompt = `Ты диетолог. Составь меню на ${scope} из ${n} приём(ов) пищи суммарно на ${kcal} ккал (допуск ±5%).
+Ориентир по БЖУ на всё меню: белки ≈ ${Math.round(g.p * ratio)} г, жиры ≈ ${Math.round(g.f * ratio)} г, углеводы ≈ ${Math.round(g.c * ratio)} г.
+Цель человека: ${goalTxt}. Пожелания: ${prefs || "нет"}.
+Используй обычные продукты из российских магазинов. Для каждого продукта укажи вес в граммах и уточни состояние, где это важно
+(например «гречка сухая», «куриное филе сырое», «молоко 2,5%»). Калории и БЖУ считай по стандартным таблицам для указанного веса.
+Названия приёмов: Завтрак, Перекус, Обед, Полдник, Ужин — по смыслу и по количеству.
+Ответь ТОЛЬКО JSON без пояснений, по-русски:
+{"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
+    $("menuGo").disabled = true; $("menuOut").innerHTML = "";
+    st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты';
+    try {
+      const meals = normalizeMenu(parseJSON(await callAI(prompt, null)));
+      const saved = { target: kcal, created: Date.now(), meals };
+      store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
+    } catch (e) {
+      st.className = "status err"; st.innerHTML = "Ошибка: " + escapeHTML(e.message || String(e));
+    } finally { $("menuGo").disabled = false; }
   };
 
   // ---------- settings & goal calculator ----------
@@ -827,7 +967,7 @@ textarea{min-height:80px;resize:vertical}
   $("setSave").onclick = () => {
     const p = $("sProvider").value, m = $("sModel").value.trim();
     const wNow = parseNum($("pWeight").value);
-    settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m,
+    settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m, menuPrefs: settings.menuPrefs || "",
       goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 },
       water: num($("gW").value) || 2000,
       glasses: [$("gG1").value, $("gG2").value].map((v, i) => { const n = num(v); return n >= 10 && n <= 3000 ? n : [250, 500][i]; }),
@@ -843,7 +983,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "9";
+  const APP_VERSION = "10";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
