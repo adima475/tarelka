@@ -115,6 +115,7 @@ textarea{min-height:80px;resize:vertical}
 .hint{font-size:13px;color:var(--muted);margin-top:6px}
 .hint a{color:var(--accent)}
 .calcres{font-size:14px;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);display:none}
+@keyframes flash{0%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
 .status{margin-top:12px;font-size:14px;min-height:20px}
 .status.err{color:var(--danger)}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
@@ -240,10 +241,10 @@ textarea{min-height:80px;resize:vertical}
     <label for="mTime">Время</label>
     <input id="mTime" type="time">
     <div class="grid4">
-      <div><label for="mK">Ккал</label><input id="mK" type="number" inputmode="decimal" min="0"></div>
-      <div><label for="mP">Белки</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
-      <div><label for="mF">Жиры</label><input id="mF" type="number" inputmode="decimal" min="0"></div>
-      <div><label for="mC">Углев.</label><input id="mC" type="number" inputmode="decimal" min="0"></div>
+      <div><label for="mK">Ккал</label><input id="mK" type="text" inputmode="decimal" autocomplete="off"></div>
+      <div><label for="mP">Белки</label><input id="mP" type="text" inputmode="decimal" autocomplete="off"></div>
+      <div><label for="mF">Жиры</label><input id="mF" type="text" inputmode="decimal" autocomplete="off"></div>
+      <div><label for="mC">Углев.</label><input id="mC" type="text" inputmode="decimal" autocomplete="off"></div>
     </div>
     <div class="items" id="itemsTxt"></div>
     <div class="btnrow">
@@ -286,7 +287,7 @@ textarea{min-height:80px;resize:vertical}
   <div class="inner">
     <h3>Вес</h3>
     <div class="grid2">
-      <div><label for="wKg">Вес, кг</label><input id="wKg" type="number" inputmode="decimal" step="0.1" min="20" max="400" placeholder="например 72.5"></div>
+      <div><label for="wKg">Вес, кг</label><input id="wKg" type="text" inputmode="decimal" autocomplete="off" placeholder="например 72,5"></div>
       <div><label for="wDate">Дата</label><input id="wDate" type="date"></div>
     </div>
     <div class="btnrow" style="margin-top:10px"><button class="primary" id="wSave">Записать вес</button></div>
@@ -316,8 +317,8 @@ textarea{min-height:80px;resize:vertical}
       <div><label for="pHeight">Рост, см</label><input id="pHeight" type="number" inputmode="numeric" min="100" max="250"></div>
     </div>
     <div class="grid2">
-      <div><label for="pWeight">Текущий вес, кг</label><input id="pWeight" type="number" inputmode="decimal" step="0.1"></div>
-      <div><label for="pTarget">Желаемый вес, кг</label><input id="pTarget" type="number" inputmode="decimal" step="0.1"></div>
+      <div><label for="pWeight">Текущий вес, кг</label><input id="pWeight" type="text" inputmode="decimal" autocomplete="off" placeholder="79,5"></div>
+      <div><label for="pTarget">Желаемый вес, кг</label><input id="pTarget" type="text" inputmode="decimal" autocomplete="off" placeholder="72"></div>
     </div>
     <label for="pAct">Активность</label>
     <select id="pAct">
@@ -411,7 +412,9 @@ textarea{min-height:80px;resize:vertical}
     return currentDay().toLocaleDateString("ru-RU", { weekday:"short", day:"numeric", month:"long" });
   }
 
-  const num = v => Math.round(Number(v) || 0);
+  // iPhone keyboards in Russian type a decimal comma: accept "79,5" as well as "79.5"
+  const parseNum = v => parseFloat(String(v ?? "").replace(/\s/g, "").replace(/[−–]/g, "-").replace(",", "."));
+  const num = v => Math.round(parseNum(v) || 0);
   const kg1 = v => (Math.round(v * 10) / 10).toLocaleString("ru-RU");
   const sortedWeights = () => weights.slice().sort((a,b) => a.day < b.day ? -1 : 1);
   const kcalByDay = () => entries.reduce((m,e) => (m[e.day] = (m[e.day]||0) + num(e.k), m), {});
@@ -566,7 +569,7 @@ textarea{min-height:80px;resize:vertical}
   }
   $("weightCard").onclick = openWeight;
   $("wSave").onclick = () => {
-    const kg = parseFloat(String($("wKg").value).replace(",", ".")), day = $("wDate").value || dayKey(new Date());
+    const kg = parseNum($("wKg").value), day = $("wDate").value || dayKey(new Date());
     if (!(kg >= 20 && kg <= 400)) { $("wStatus").className = "status err"; $("wStatus").textContent = "Введите вес от 20 до 400 кг."; return; }
     saveWeight(day, kg);
     $("wStatus").className = "status"; $("wStatus").textContent = "Записано: " + kg1(kg) + " кг";
@@ -750,7 +753,7 @@ textarea{min-height:80px;resize:vertical}
     d.setHours(hh || 0, mm || 0, 0, 0);
     const data = { ts: d.getTime(), day: dayKey(d),
       name: $("mName").value.trim() || $("desc").value.trim().slice(0, 60) || "Приём пищи",
-      k, p: +$("mP").value || 0, f: +$("mF").value || 0, c: +$("mC").value || 0, thumb: pending.thumb };
+      k, p: parseNum($("mP").value) || 0, f: parseNum($("mF").value) || 0, c: parseNum($("mC").value) || 0, thumb: pending.thumb };
     let saved;
     if (old) { Object.assign(old, data); saved = old; }
     else { saved = Object.assign({ id: Date.now() + Math.random().toString(36).slice(2) }, data); entries.push(saved); }
@@ -781,12 +784,17 @@ textarea{min-height:80px;resize:vertical}
     $("gG1").value = settings.glasses[0]; $("gG2").value = settings.glasses[1];
   }
   $("calcGoal").onclick = () => {
-    const sex = $("pSex").value, age = +$("pAge").value, h = +$("pHeight").value;
-    const w = parseFloat(String($("pWeight").value).replace(",", ".")), act = +$("pAct").value;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const sex = $("pSex").value, age = parseNum($("pAge").value), h = parseNum($("pHeight").value);
+    const w = parseNum($("pWeight").value), act = +$("pAct").value, target = parseNum($("pTarget").value);
     const res = $("calcRes"); res.style.display = "block";
-    if (!(age >= 10 && age <= 100 && h >= 100 && h <= 250 && w >= 20 && w <= 400)) {
-      res.textContent = "Заполните возраст, рост и текущий вес."; return;
-    }
+    // replay a short highlight so every press is visibly answered, even when the numbers come out the same
+    res.style.animation = "none"; void res.offsetWidth; res.style.animation = "flash .6s";
+    const bad = [];
+    if (!(age >= 10 && age <= 100)) bad.push("возраст (10–100)");
+    if (!(h >= 100 && h <= 250)) bad.push("рост в см (100–250)");
+    if (!(w >= 20 && w <= 400)) bad.push("текущий вес в кг");
+    if (bad.length) { res.textContent = "Проверьте: " + bad.join(", ") + "."; return; }
     // Mifflin–St Jeor
     const bmr = 10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161);
     const tdee = bmr * act;
@@ -799,19 +807,32 @@ textarea{min-height:80px;resize:vertical}
     const wat = Math.round(w * 30 / 50) * 50;
     $("gK").value = kcal; $("gP").value = prot; $("gF").value = fat; $("gC").value = carbs; $("gW").value = wat;
     const what = goalType === "lose" ? "дефицит 20% — примерно −0,5 кг в неделю" : goalType === "gain" ? "профицит +300 ккал — примерно +0,25 кг в неделю" : "поддержание веса";
-    res.innerHTML = `Расход в день ≈ <b>${Math.round(tdee)}</b> ккал. Ваша норма: <b>${kcal}</b> ккал (${what}). Нажмите «Сохранить».`;
+    let tgt = "";
+    if (target >= 20 && target <= 400 && Math.abs(target - w) >= 0.1) {
+      const delta = target - w;
+      if (goalType === "lose" && delta > 0) tgt = `<br>⚠︎ Желаемый вес больше текущего — может, выбрать «Набрать»?`;
+      else if (goalType === "gain" && delta < 0) tgt = `<br>⚠︎ Желаемый вес меньше текущего — может, выбрать «Похудеть»?`;
+      else if (goalType === "keep") tgt = `<br>Желаемый вес отличается от текущего на ${kg1(Math.abs(delta))} кг — выберите «${delta < 0 ? "Похудеть" : "Набрать"}».`;
+      else {
+        const weeks = Math.ceil(Math.abs(delta) / (goalType === "lose" ? 0.5 : 0.25));
+        const when = new Date(Date.now() + weeks * 7 * 86400000).toLocaleDateString("ru-RU", { month:"long", year:"numeric" });
+        tgt = `<br>До ${kg1(target)} кг: ${kg1(Math.abs(delta))} кг ≈ <b>${weeks} нед.</b> (ориентировочно ${when}).`;
+      }
+    }
+    res.innerHTML = `Расход в день ≈ <b>${Math.round(tdee)}</b> ккал. Ваша норма: <b>${kcal}</b> ккал (${what}).${tgt}<br>Нажмите «Сохранить».`;
+    res.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   $("sProvider").onchange = () => { const p = $("sProvider").value; $("sModel").value = PROVIDERS[p].model; $("providerHint").innerHTML = PROVIDERS[p].hint; };
   $("openSettings").onclick = () => { fillSettings(); openSheet("set"); };
   $("setSave").onclick = () => {
     const p = $("sProvider").value, m = $("sModel").value.trim();
-    const wNow = parseFloat(String($("pWeight").value).replace(",", "."));
+    const wNow = parseNum($("pWeight").value);
     settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m,
       goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 },
       water: num($("gW").value) || 2000,
       glasses: [$("gG1").value, $("gG2").value].map((v, i) => { const n = num(v); return n >= 10 && n <= 3000 ? n : [250, 500][i]; }),
       profile: { goal: goalType, sex: $("pSex").value, age: $("pAge").value, height: $("pHeight").value,
-        target: $("pTarget").value, act: $("pAct").value } };
+        target: parseNum($("pTarget").value) >= 20 ? String(parseNum($("pTarget").value)) : "", act: $("pAct").value } };
     store.set("tarelka.settings", settings);
     if (wNow >= 20 && wNow <= 400 && wNow !== latestWeight()) saveWeight(dayKey(new Date()), wNow);
     closeSheet("set"); render();
@@ -822,7 +843,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "8";
+  const APP_VERSION = "9";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
