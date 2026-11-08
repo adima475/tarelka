@@ -725,7 +725,23 @@ textarea{min-height:80px;resize:vertical}
 "items":[{"name":"компонент","grams":число,"calories":число}],"confidence":"высокая|средняя|низкая"}
 Если на фото нет еды — {"error":"на фото не видно еды"}.`;
 
-  async function callAI(userText, photo){
+  // Safari reports a dropped connection as TypeError "Load failed" (Chrome: "Failed to fetch")
+  const isNetErr = e => e instanceof TypeError || /load failed|failed to fetch|network|fetch/i.test(e && e.message || "");
+  function errText(e){
+    if (isNetErr(e)) return "Связь с ИИ прервалась. Частые причины: слабый интернет, приложение свернули или экран заблокировался во время ответа, бесплатная модель слишком долго думала. Попробуйте ещё раз и не сворачивайте приложение, пока идёт ответ.";
+    return "Ошибка: " + escapeHTML(e && e.message || String(e));
+  }
+  // one automatic retry when the connection drops; other errors are reported as they are
+  async function askAI(userText, photo, onProgress){
+    try { return await callAI(userText, photo, onProgress); }
+    catch (e) {
+      if (!isNetErr(e)) throw e;
+      if (onProgress) onProgress(-1);
+      return await callAI(userText, photo, onProgress);
+    }
+  }
+
+  async function callAI(userText, photo, onProgress){
     const p = settings.provider, cfg = PROVIDERS[p], model = settings.model || cfg.model, key = settings.key.trim();
     if (p === "gemini") {
       const parts = [{ text: userText }];
@@ -744,11 +760,43 @@ textarea{min-height:80px;resize:vertical}
       : userText;
     const headers = { "Content-Type":"application/json", "Authorization":"Bearer " + key };
     if (p === "openrouter") headers["X-Title"] = "Tarelka";
+    // stream the reply: tokens keep the connection busy, so a long answer is not cut off by an idle timeout
     const r = await fetch(url, { method:"POST", headers,
-      body: JSON.stringify({ model, temperature:0.2, messages:[{ role:"user", content }] }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && (j.error.message || j.error)) || ("HTTP " + r.status));
-    return j.choices?.[0]?.message?.content || "";
+      body: JSON.stringify({ model, temperature:0.2, stream: true, messages:[{ role:"user", content }] }) });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error((j.error && (j.error.message || j.error)) || ("HTTP " + r.status));
+    }
+    let acc = "", buf = "", done = false;
+    const handle = line => {
+      line = line.trim();
+      if (!line.startsWith("data:")) return;          // ": OPENROUTER PROCESSING" keep-alive comments are skipped
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") { done = true; return; }
+      let o; try { o = JSON.parse(payload); } catch { return; }
+      if (o.error) throw new Error(o.error.message || String(o.error));
+      const ch = o.choices && o.choices[0];
+      const piece = (ch && ch.delta && ch.delta.content) || (ch && ch.message && ch.message.content) || "";
+      if (piece) { acc += piece; if (onProgress) onProgress(acc.length); }
+    };
+    if (r.body && r.body.getReader) {
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      while (!done) {
+        const { value, done: end } = await reader.read();
+        if (end) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const l of lines) { handle(l); if (done) break; }
+      }
+      if (buf) handle(buf);
+      try { reader.cancel(); } catch {}
+    } else {
+      const txt = await r.text();
+      if (txt.trim().startsWith("{")) { const j = JSON.parse(txt); return j.choices?.[0]?.message?.content || ""; }
+      txt.split("\n").forEach(handle);
+    }
+    if (!acc.trim()) throw new Error("ИИ прислал пустой ответ — попробуйте ещё раз");
+    return acc;
   }
 
   function parseJSON(s){
@@ -766,7 +814,8 @@ textarea{min-height:80px;resize:vertical}
     $("analyze").disabled = true;
     setStatus('<span class="spinner"></span>Считаю калории…');
     try {
-      const d = parseJSON(await callAI(PROMPT + (text ? "\n\nОписание пользователя: " + text : ""), usePhoto ? pending.photo : null));
+      const d = parseJSON(await askAI(PROMPT + (text ? "\n\nОписание пользователя: " + text : ""), usePhoto ? pending.photo : null,
+        n => setStatus('<span class="spinner"></span>' + (n < 0 ? "Связь прервалась, пробую ещё раз…" : "ИИ отвечает…"))));
       if (d.error) { setStatus(escapeHTML(String(d.error)), "err"); return; }
       $("mName").value = d.name || "";
       $("mK").value = num(d.calories); $("mP").value = num(d.protein); $("mF").value = num(d.fat); $("mC").value = num(d.carbs);
@@ -774,8 +823,8 @@ textarea{min-height:80px;resize:vertical}
         ? "Состав: " + d.items.map(i => `${i.name}${i.grams ? " " + num(i.grams) + " г" : ""} (${num(i.calories)} ккал)`).join(", ") : "";
       setStatus("Готово" + (d.confidence ? " · точность: " + escapeHTML(String(d.confidence)) : "") + ". Проверьте и поправьте, если нужно.");
     } catch (e) {
-      let msg = "Ошибка: " + escapeHTML(e.message || String(e));
-      if (settings.provider === "openrouter" && /unavailable|free|not found|no endpoints/i.test(e.message || ""))
+      let msg = errText(e);
+      if (!isNetErr(e) && settings.provider === "openrouter" && /unavailable|free|not found|no endpoints/i.test(e.message || ""))
         msg += "<br>Откройте ⚙︎ и поставьте модель <b>openrouter/free</b> — или выберите Google Gemini.";
       setStatus(msg, "err");
     } finally { $("analyze").disabled = false; }
@@ -894,13 +943,16 @@ textarea{min-height:80px;resize:vertical}
 Ответь ТОЛЬКО JSON без пояснений, по-русски:
 {"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
     $("menuGo").disabled = true; $("menuOut").innerHTML = "";
-    st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты';
+    st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
     try {
-      const meals = normalizeMenu(parseJSON(await callAI(prompt, null)));
+      const meals = normalizeMenu(parseJSON(await askAI(prompt, null, n => {
+        st.innerHTML = '<span class="spinner"></span>' + (n < 0 ? "Связь прервалась, пробую ещё раз…"
+          : "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
+      })));
       const saved = { target: kcal, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
-      st.className = "status err"; st.innerHTML = "Ошибка: " + escapeHTML(e.message || String(e));
+      st.className = "status err"; st.innerHTML = errText(e);
     } finally { $("menuGo").disabled = false; }
   };
 
@@ -983,7 +1035,7 @@ textarea{min-height:80px;resize:vertical}
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "10";
+  const APP_VERSION = "11";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
