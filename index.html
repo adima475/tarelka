@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Тарелка">
+<meta name="theme-color" content="#0f1115">
+<title>Тарелка</title>
+<style>
+:root{
+  --bg:#f4f5f7;--card:#ffffff;--text:#14161a;--muted:#6b7280;--line:#e5e7eb;
+  --accent:#16a34a;--accent-soft:#dcfce7;--p:#2563eb;--f:#d97706;--c:#db2777;--danger:#dc2626;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115;--card:#181b21;--text:#f3f4f6;--muted:#9ca3af;--line:#2a2e36;
+    --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115;--card:#181b21;--text:#f3f4f6;--muted:#9ca3af;--line:#2a2e36;
+  --accent:#22c55e;--accent-soft:#14321f;--p:#60a5fa;--f:#fbbf24;--c:#f472b6;--danger:#f87171;
+  --shadow:none;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 110px)}
+.wrap{max-width:520px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:28px;margin:0;letter-spacing:-.02em}
+.iconbtn{border:0;background:var(--card);color:var(--text);width:40px;height:40px;border-radius:12px;
+  box-shadow:var(--shadow);font-size:20px;cursor:pointer}
+.daynav{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px}
+.daynav button{border:0;background:none;color:var(--accent);font-size:22px;padding:4px 12px;cursor:pointer}
+.daynav button:disabled{opacity:.25}
+.daynav span{font-weight:600;color:var(--muted)}
+.card{background:var(--card);border-radius:20px;padding:18px;box-shadow:var(--shadow);margin-bottom:14px}
+.summary{display:flex;gap:18px;align-items:center}
+.ring{position:relative;width:132px;height:132px;flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .big{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.ring .small{font-size:12px;color:var(--muted)}
+.macros{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0}
+.macro .row{display:flex;justify-content:space-between;font-size:14px}
+.macro .row b{font-variant-numeric:tabular-nums}
+.bar{height:7px;border-radius:9px;background:var(--line);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;border-radius:9px;width:0;transition:width .4s}
+h2{font-size:18px;margin:6px 4px 10px}
+.entry{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.entry:first-child{border-top:0}
+.thumb{width:52px;height:52px;border-radius:12px;background:var(--accent-soft);flex:none;object-fit:cover;
+  display:flex;align-items:center;justify-content:center;font-size:24px}
+.entry .info{flex:1;min-width:0}
+.entry .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .meta{font-size:13px;color:var(--muted)}
+.entry .kcal{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.del{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;padding:6px}
+.empty{color:var(--muted);text-align:center;padding:18px 0}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 20px);
+  display:flex;gap:10px;z-index:5}
+.fab button{white-space:nowrap;border:0;border-radius:999px;padding:15px 20px;font-size:16px;font-weight:600;cursor:pointer;
+  box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.primary{background:var(--accent);color:#fff}
+.secondary{background:var(--card);color:var(--text)}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:10}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-radius:22px 22px 0 0;
+  padding:18px 16px calc(env(safe-area-inset-bottom) + 18px);max-height:92vh;overflow:auto;
+  transform:translateY(100%);transition:transform .25s;z-index:11}
+.sheet.open{transform:none}
+.sheet-bg.open{display:block}
+.sheet .inner{max-width:520px;margin:0 auto}
+.sheet h3{margin:0 0 14px;font-size:20px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);
+  border-radius:12px;padding:12px}
+textarea{min-height:80px;resize:vertical}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grid4 label{margin-top:8px}
+.btnrow{display:flex;gap:10px;margin-top:18px}
+.btnrow button{flex:1;border:0;border-radius:14px;padding:14px;font:inherit;font-weight:600;cursor:pointer}
+.preview{width:100%;max-height:260px;object-fit:cover;border-radius:16px;display:none;margin-bottom:8px}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+.hint a{color:var(--accent)}
+.status{margin-top:12px;font-size:14px;min-height:20px}
+.status.err{color:var(--danger)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.items{font-size:13px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Тарелка</h1>
+    <button class="iconbtn" id="openSettings" aria-label="Настройки">⚙︎</button>
+  </header>
+
+  <div class="daynav">
+    <button id="prevDay" aria-label="Предыдущий день">‹</button>
+    <span id="dayLabel">Сегодня</span>
+    <button id="nextDay" aria-label="Следующий день">›</button>
+  </div>
+
+  <div class="card summary">
+    <div class="ring">
+      <svg width="132" height="132" viewBox="0 0 132 132">
+        <circle cx="66" cy="66" r="56" fill="none" stroke="var(--line)" stroke-width="12"/>
+        <circle id="ringArc" cx="66" cy="66" r="56" fill="none" stroke="var(--accent)" stroke-width="12"
+          stroke-linecap="round" stroke-dasharray="351.86" stroke-dashoffset="351.86" style="transition:stroke-dashoffset .5s"/>
+      </svg>
+      <div class="center"><div class="big" id="kcalLeft">0</div><div class="small" id="kcalLeftLbl">осталось ккал</div></div>
+    </div>
+    <div class="macros">
+      <div class="macro"><div class="row"><span>Белки</span><b id="pTxt">0 / 0 г</b></div><div class="bar"><i id="pBar" style="background:var(--p)"></i></div></div>
+      <div class="macro"><div class="row"><span>Жиры</span><b id="fTxt">0 / 0 г</b></div><div class="bar"><i id="fBar" style="background:var(--f)"></i></div></div>
+      <div class="macro"><div class="row"><span>Углеводы</span><b id="cTxt">0 / 0 г</b></div><div class="bar"><i id="cBar" style="background:var(--c)"></i></div></div>
+      <div class="macro" style="font-size:13px;color:var(--muted)">Съедено: <b id="eatenTxt" style="color:var(--text)">0</b> из <span id="goalTxt">0</span> ккал</div>
+    </div>
+  </div>
+
+  <h2>Приёмы пищи</h2>
+  <div class="card" id="list"></div>
+</div>
+
+<div class="fab">
+  <button class="primary" id="addPhoto">📷 Фото еды</button>
+  <button class="secondary" id="addText">✍︎ Текстом</button>
+</div>
+<input type="file" id="fileInput" accept="image/*" capture="environment" hidden>
+
+<!-- Add meal sheet -->
+<div class="sheet-bg" id="mealBg"></div>
+<div class="sheet" id="mealSheet" role="dialog" aria-modal="true">
+  <div class="inner">
+    <h3 id="mealTitle">Новый приём пищи</h3>
+    <img class="preview" id="preview" alt="">
+    <label for="desc">Описание (необязательно для фото)</label>
+    <textarea id="desc" placeholder="Например: овсянка на молоке 250 г, банан, кофе с сахаром"></textarea>
+    <div class="btnrow" style="margin-top:10px"><button class="primary" id="analyze">✨ Посчитать с ИИ</button></div>
+    <div class="status" id="status"></div>
+
+    <label for="mName">Название</label>
+    <input id="mName" placeholder="Блюдо">
+    <div class="grid4">
+      <div><label for="mK">Ккал</label><input id="mK" type="number" inputmode="decimal" min="0"></div>
+      <div><label for="mP">Белки</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
+      <div><label for="mF">Жиры</label><input id="mF" type="number" inputmode="decimal" min="0"></div>
+      <div><label for="mC">Углев.</label><input id="mC" type="number" inputmode="decimal" min="0"></div>
+    </div>
+    <div class="items" id="itemsTxt"></div>
+    <div class="btnrow">
+      <button class="secondary" id="mealCancel" style="background:var(--bg)">Отмена</button>
+      <button class="primary" id="mealSave">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheet-bg" id="setBg"></div>
+<div class="sheet" id="setSheet" role="dialog" aria-modal="true">
+  <div class="inner">
+    <h3>Настройки</h3>
+    <label for="sProvider">ИИ-провайдер</label>
+    <select id="sProvider">
+      <option value="gemini">Google Gemini — бесплатно, понимает фото</option>
+      <option value="openrouter">OpenRouter — бесплатные модели (:free)</option>
+      <option value="deepseek">DeepSeek — только текст, платно (дёшево)</option>
+    </select>
+    <div class="hint" id="providerHint"></div>
+    <label for="sKey">API-ключ</label>
+    <input id="sKey" type="password" autocomplete="off" placeholder="Вставьте ключ">
+    <label for="sModel">Модель</label>
+    <input id="sModel" autocomplete="off">
+    <div class="grid4">
+      <div><label for="gK">Цель ккал</label><input id="gK" type="number" inputmode="numeric"></div>
+      <div><label for="gP">Белки г</label><input id="gP" type="number" inputmode="numeric"></div>
+      <div><label for="gF">Жиры г</label><input id="gF" type="number" inputmode="numeric"></div>
+      <div><label for="gC">Углев. г</label><input id="gC" type="number" inputmode="numeric"></div>
+    </div>
+    <div class="hint">Ключ и записи хранятся только на этом устройстве (в браузере). Запрос с фото уходит напрямую выбранному провайдеру.</div>
+    <div class="btnrow">
+      <button class="secondary" id="setCancel" style="background:var(--bg)">Закрыть</button>
+      <button class="primary" id="setSave">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const PROVIDERS = {
+    gemini: { model: "gemini-flash-latest", vision: true,
+      hint: 'Бесплатный ключ: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (войти через Google → Create API key).' },
+    openrouter: { model: "google/gemma-3-27b-it:free", vision: true,
+      hint: 'Ключ: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. Бесплатные модели оканчиваются на <b>:free</b> — список на openrouter.ai/models.' },
+    deepseek: { model: "deepseek-chat", vision: false,
+      hint: 'Ключ: <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Фото не распознаёт — только текстовое описание. Нужен баланс.' }
+  };
+
+  // ---------- storage (safe) ----------
+  const store = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
+  };
+  let settings = Object.assign({ provider:"gemini", key:"", model:"", goal:{k:2000,p:120,f:65,c:230} }, store.get("tarelka.settings", {}));
+  let entries = store.get("tarelka.entries", []);
+  let dayOffset = 0;
+  let pending = { photo:null, thumb:null };
+
+  // ---------- dates ----------
+  const dayKey = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const currentDay = () => { const d = new Date(); d.setDate(d.getDate()+dayOffset); return d; };
+  function dayLabel(){
+    if (dayOffset === 0) return "Сегодня";
+    if (dayOffset === -1) return "Вчера";
+    return currentDay().toLocaleDateString("ru-RU", { weekday:"short", day:"numeric", month:"long" });
+  }
+
+  // ---------- render ----------
+  const num = v => Math.round(Number(v) || 0);
+  function render(){
+    const key = dayKey(currentDay());
+    const list = entries.filter(e => e.day === key).sort((a,b) => a.ts - b.ts);
+    const t = list.reduce((s,e) => ({k:s.k+num(e.k), p:s.p+(+e.p||0), f:s.f+(+e.f||0), c:s.c+(+e.c||0)}), {k:0,p:0,f:0,c:0});
+    const g = settings.goal;
+    $("dayLabel").textContent = dayLabel();
+    $("nextDay").disabled = dayOffset >= 0;
+    const left = g.k - t.k;
+    $("kcalLeft").textContent = Math.abs(left);
+    $("kcalLeftLbl").textContent = left >= 0 ? "осталось ккал" : "перебор ккал";
+    const C = 351.86, frac = Math.min(t.k / (g.k || 1), 1);
+    $("ringArc").setAttribute("stroke-dashoffset", C * (1 - frac));
+    $("ringArc").setAttribute("stroke", left >= 0 ? "var(--accent)" : "var(--danger)");
+    for (const m of ["p","f","c"]) {
+      $(m+"Txt").textContent = num(t[m]) + " / " + num(g[m]) + " г";
+      $(m+"Bar").style.width = Math.min(100, t[m] / (g[m] || 1) * 100) + "%";
+    }
+    $("eatenTxt").textContent = t.k;
+    $("goalTxt").textContent = g.k;
+
+    const box = $("list");
+    box.innerHTML = "";
+    if (!list.length) { box.innerHTML = '<div class="empty">Пока пусто. Сфотографируйте еду или опишите её текстом.</div>'; return; }
+    for (const e of list) {
+      const row = document.createElement("div"); row.className = "entry";
+      let th;
+      if (e.thumb) { th = document.createElement("img"); th.src = e.thumb; th.alt = ""; }
+      else { th = document.createElement("div"); th.textContent = "🍽"; }
+      th.className = "thumb";
+      const info = document.createElement("div"); info.className = "info";
+      const n = document.createElement("div"); n.className = "name"; n.textContent = e.name || "Без названия";
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = new Date(e.ts).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}) +
+        " · Б " + num(e.p) + " · Ж " + num(e.f) + " · У " + num(e.c);
+      info.append(n, meta);
+      const k = document.createElement("div"); k.className = "kcal"; k.textContent = num(e.k) + " ккал";
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label","Удалить");
+      del.onclick = () => { if (confirm("Удалить «" + (e.name||"запись") + "»?")) { entries = entries.filter(x => x.id !== e.id); store.set("tarelka.entries", entries); render(); } };
+      row.append(th, info, k, del);
+      box.append(row);
+    }
+  }
+
+  // ---------- sheets ----------
+  function openSheet(name){ $(name+"Sheet").classList.add("open"); $(name+"Bg").classList.add("open"); }
+  function closeSheet(name){ $(name+"Sheet").classList.remove("open"); $(name+"Bg").classList.remove("open"); }
+  $("mealBg").onclick = $("mealCancel").onclick = () => closeSheet("meal");
+  $("setBg").onclick = $("setCancel").onclick = () => closeSheet("set");
+
+  function resetMeal(){
+    pending = { photo:null, thumb:null };
+    $("preview").style.display = "none"; $("preview").removeAttribute("src");
+    for (const id of ["desc","mName","mK","mP","mF","mC"]) $(id).value = "";
+    $("itemsTxt").textContent = ""; setStatus("");
+  }
+  function setStatus(msg, kind){ const s = $("status"); s.className = "status" + (kind==="err"?" err":""); s.innerHTML = msg; }
+
+  $("addText").onclick = () => { resetMeal(); $("mealTitle").textContent = "Описать еду"; openSheet("meal"); setTimeout(()=>$("desc").focus(), 250); };
+  $("addPhoto").onclick = () => { $("fileInput").value = ""; $("fileInput").click(); };
+  $("fileInput").onchange = async ev => {
+    const file = ev.target.files && ev.target.files[0]; if (!file) return;
+    resetMeal(); $("mealTitle").textContent = "Фото еды"; openSheet("meal");
+    try {
+      pending.photo = await downscale(file, 1024, 0.82);
+      pending.thumb = await downscale(file, 160, 0.7);
+      $("preview").src = pending.photo; $("preview").style.display = "block";
+      if (settings.key && PROVIDERS[settings.provider].vision) analyze();
+      else if (!settings.key) setStatus("Добавьте API-ключ в настройках ⚙︎, чтобы ИИ посчитал калории. Или заполните поля вручную.");
+      else setStatus("DeepSeek не видит фото — опишите блюдо текстом и нажмите «Посчитать».");
+    } catch (e) { setStatus("Не удалось прочитать фото: " + e.message, "err"); }
+  };
+
+  function downscale(file, max, q){
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file); const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas"); cv.width = Math.round(img.width*s); cv.height = Math.round(img.height*s);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", q));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("формат не поддерживается")); };
+      img.src = url;
+    });
+  }
+
+  // ---------- AI ----------
+  const PROMPT = `Ты нутрициолог. Оцени еду на фото и/или в описании пользователя.
+Если вес не указан — оцени порцию по виду. Учитывай масло, соусы, сахар в напитках.
+Ответь ТОЛЬКО JSON без пояснений, по-русски:
+{"name":"краткое название блюда","calories":число,"protein":граммы,"fat":граммы,"carbs":граммы,
+"items":[{"name":"компонент","grams":число,"calories":число}],"confidence":"высокая|средняя|низкая"}
+Если на фото нет еды — {"error":"на фото не видно еды"}.`;
+
+  async function callAI(text, photo){
+    const p = settings.provider, cfg = PROVIDERS[p], model = settings.model || cfg.model, key = settings.key.trim();
+    const userText = PROMPT + (text ? "\n\nОписание пользователя: " + text : "");
+    if (p === "gemini") {
+      const parts = [{ text: userText }];
+      if (photo) parts.push({ inline_data: { mime_type: "image/jpeg", data: photo.split(",")[1] } });
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({ contents: [{ role:"user", parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.2 } })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
+      return (j.candidates?.[0]?.content?.parts || []).map(x => x.text || "").join("");
+    }
+    const url = p === "openrouter" ? "https://openrouter.ai/api/v1/chat/completions" : "https://api.deepseek.com/chat/completions";
+    const content = photo && cfg.vision
+      ? [{ type:"text", text:userText }, { type:"image_url", image_url:{ url: photo } }]
+      : userText;
+    const headers = { "Content-Type":"application/json", "Authorization":"Bearer " + key };
+    if (p === "openrouter") headers["X-Title"] = "Tarelka";
+    const r = await fetch(url, { method:"POST", headers,
+      body: JSON.stringify({ model, temperature:0.2, messages:[{ role:"user", content }] }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j.error && (j.error.message || j.error)) || ("HTTP " + r.status));
+    return j.choices?.[0]?.message?.content || "";
+  }
+
+  function parseJSON(s){
+    s = String(s).replace(/```(?:json)?/gi, "").trim();
+    const a = s.indexOf("{"), b = s.lastIndexOf("}");
+    if (a < 0 || b < a) throw new Error("ИИ ответил не в том формате");
+    return JSON.parse(s.slice(a, b + 1));
+  }
+
+  async function analyze(){
+    const text = $("desc").value.trim();
+    if (!settings.key) { setStatus("Сначала добавьте API-ключ в настройках ⚙︎", "err"); return; }
+    const usePhoto = pending.photo && PROVIDERS[settings.provider].vision;
+    if (!text && !usePhoto) { setStatus("Опишите, что вы съели, или сделайте фото.", "err"); return; }
+    $("analyze").disabled = true;
+    setStatus('<span class="spinner"></span>Считаю калории…');
+    try {
+      const d = parseJSON(await callAI(text, usePhoto ? pending.photo : null));
+      if (d.error) { setStatus(d.error, "err"); return; }
+      $("mName").value = d.name || "";
+      $("mK").value = num(d.calories); $("mP").value = num(d.protein); $("mF").value = num(d.fat); $("mC").value = num(d.carbs);
+      $("itemsTxt").textContent = Array.isArray(d.items) && d.items.length
+        ? "Состав: " + d.items.map(i => `${i.name}${i.grams ? " " + num(i.grams) + " г" : ""} (${num(i.calories)} ккал)`).join(", ") : "";
+      setStatus("Готово" + (d.confidence ? " · точность: " + d.confidence : "") + ". Проверьте и поправьте, если нужно.");
+    } catch (e) {
+      setStatus("Ошибка: " + escapeHTML(e.message || String(e)), "err");
+    } finally { $("analyze").disabled = false; }
+  }
+  const escapeHTML = s => s.replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+  $("analyze").onclick = analyze;
+
+  $("mealSave").onclick = () => {
+    const k = num($("mK").value);
+    if (!$("mName").value.trim() && !k) { setStatus("Заполните название или калории.", "err"); return; }
+    const d = currentDay(), now = new Date();
+    if (dayOffset !== 0) d.setHours(12, 0, 0, 0); else d.setTime(now.getTime());
+    entries.push({ id: Date.now() + Math.random().toString(36).slice(2), ts: d.getTime(), day: dayKey(d),
+      name: $("mName").value.trim() || $("desc").value.trim().slice(0, 60) || "Приём пищи",
+      k, p: +$("mP").value || 0, f: +$("mF").value || 0, c: +$("mC").value || 0, thumb: pending.thumb });
+    if (!store.set("tarelka.entries", entries)) {
+      entries[entries.length-1].thumb = null;
+      if (!store.set("tarelka.entries", entries)) alert("Не удалось сохранить: хранилище браузера недоступно.");
+    }
+    closeSheet("meal"); render();
+  };
+
+  // ---------- settings ----------
+  function fillSettings(){
+    $("sProvider").value = settings.provider; $("sKey").value = settings.key;
+    $("sModel").value = settings.model || PROVIDERS[settings.provider].model;
+    $("providerHint").innerHTML = PROVIDERS[settings.provider].hint;
+    $("gK").value = settings.goal.k; $("gP").value = settings.goal.p; $("gF").value = settings.goal.f; $("gC").value = settings.goal.c;
+  }
+  $("sProvider").onchange = () => { const p = $("sProvider").value; $("sModel").value = PROVIDERS[p].model; $("providerHint").innerHTML = PROVIDERS[p].hint; };
+  $("openSettings").onclick = () => { fillSettings(); openSheet("set"); };
+  $("setSave").onclick = () => {
+    const p = $("sProvider").value, m = $("sModel").value.trim();
+    settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m,
+      goal: { k: num($("gK").value) || 2000, p: num($("gP").value) || 0, f: num($("gF").value) || 0, c: num($("gC").value) || 0 } };
+    store.set("tarelka.settings", settings); closeSheet("set"); render();
+  };
+
+  $("prevDay").onclick = () => { dayOffset--; render(); };
+  $("nextDay").onclick = () => { if (dayOffset < 0) { dayOffset++; render(); } };
+
+  render();
+  if (!settings.key) setTimeout(() => { fillSettings(); openSheet("set"); }, 400);
+})();
+</script>
+</body>
+</html>
