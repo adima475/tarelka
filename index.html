@@ -56,7 +56,8 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .bar{height:7px;border-radius:9px;background:var(--line);overflow:hidden;margin-top:4px}
 .bar i{display:block;height:100%;border-radius:9px;width:0;transition:width .4s}
 h2{font-size:18px;margin:6px 4px 10px}
-.entry{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.entry{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.entry:active{opacity:.6}
 .entry:first-child{border-top:0}
 .thumb{width:52px;height:52px;border-radius:12px;background:var(--accent-soft);flex:none;object-fit:cover;
   display:flex;align-items:center;justify-content:center;font-size:24px}
@@ -152,6 +153,8 @@ textarea{min-height:80px;resize:vertical}
 
     <label for="mName">Название</label>
     <input id="mName" placeholder="Блюдо">
+    <label for="mTime">Время</label>
+    <input id="mTime" type="time">
     <div class="grid4">
       <div><label for="mK">Ккал</label><input id="mK" type="number" inputmode="decimal" min="0"></div>
       <div><label for="mP">Белки</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
@@ -268,7 +271,8 @@ textarea{min-height:80px;resize:vertical}
       info.append(n, meta);
       const k = document.createElement("div"); k.className = "kcal"; k.textContent = num(e.k) + " ккал";
       const del = document.createElement("button"); del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label","Удалить");
-      del.onclick = () => { if (confirm("Удалить «" + (e.name||"запись") + "»?")) { entries = entries.filter(x => x.id !== e.id); store.set("tarelka.entries", entries); render(); } };
+      row.onclick = () => openEdit(e);
+      del.onclick = ev => { ev.stopPropagation(); if (confirm("Удалить «" + (e.name||"запись") + "»?")) { entries = entries.filter(x => x.id !== e.id); store.set("tarelka.entries", entries); render(); } };
       row.append(th, info, k, del);
       box.append(row);
     }
@@ -280,11 +284,25 @@ textarea{min-height:80px;resize:vertical}
   $("mealBg").onclick = $("mealCancel").onclick = () => closeSheet("meal");
   $("setBg").onclick = $("setCancel").onclick = () => closeSheet("set");
 
+  let editingId = null;
+  const hhmm = d => String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
   function resetMeal(){
-    pending = { photo:null, thumb:null };
+    pending = { photo:null, thumb:null }; editingId = null;
     $("preview").style.display = "none"; $("preview").removeAttribute("src");
     for (const id of ["desc","mName","mK","mP","mF","mC"]) $(id).value = "";
+    $("mTime").value = dayOffset === 0 ? hhmm(new Date()) : "12:00";
+    $("mealSave").textContent = "Сохранить";
     $("itemsTxt").textContent = ""; setStatus("");
+  }
+  function openEdit(e){
+    resetMeal(); editingId = e.id; pending.thumb = e.thumb || null;
+    $("mealTitle").textContent = "Изменить приём пищи";
+    $("mName").value = e.name || ""; $("mTime").value = hhmm(new Date(e.ts));
+    $("mK").value = num(e.k); $("mP").value = num(e.p); $("mF").value = num(e.f); $("mC").value = num(e.c);
+    if (e.thumb) { $("preview").src = e.thumb; $("preview").style.display = "block"; }
+    $("mealSave").textContent = "Сохранить изменения";
+    setStatus("Поправьте цифры вручную или опишите блюдо точнее и нажмите «Посчитать с ИИ».");
+    openSheet("meal");
   }
   function setStatus(msg, kind){ const s = $("status"); s.className = "status" + (kind==="err"?" err":""); s.innerHTML = msg; }
 
@@ -387,13 +405,18 @@ textarea{min-height:80px;resize:vertical}
   $("mealSave").onclick = () => {
     const k = num($("mK").value);
     if (!$("mName").value.trim() && !k) { setStatus("Заполните название или калории.", "err"); return; }
-    const d = currentDay(), now = new Date();
-    if (dayOffset !== 0) d.setHours(12, 0, 0, 0); else d.setTime(now.getTime());
-    entries.push({ id: Date.now() + Math.random().toString(36).slice(2), ts: d.getTime(), day: dayKey(d),
+    const old = editingId ? entries.find(x => x.id === editingId) : null;
+    const d = old ? new Date(old.ts) : currentDay();
+    const [hh, mm] = ($("mTime").value || (old ? hhmm(d) : hhmm(new Date()))).split(":").map(Number);
+    d.setHours(hh || 0, mm || 0, 0, 0);
+    const data = { ts: d.getTime(), day: dayKey(d),
       name: $("mName").value.trim() || $("desc").value.trim().slice(0, 60) || "Приём пищи",
-      k, p: +$("mP").value || 0, f: +$("mF").value || 0, c: +$("mC").value || 0, thumb: pending.thumb });
+      k, p: +$("mP").value || 0, f: +$("mF").value || 0, c: +$("mC").value || 0, thumb: pending.thumb };
+    let saved;
+    if (old) { Object.assign(old, data); saved = old; }
+    else { saved = Object.assign({ id: Date.now() + Math.random().toString(36).slice(2) }, data); entries.push(saved); }
     if (!store.set("tarelka.entries", entries)) {
-      entries[entries.length-1].thumb = null;
+      saved.thumb = null;
       if (!store.set("tarelka.entries", entries)) alert("Не удалось сохранить: хранилище браузера недоступно.");
     }
     closeSheet("meal"); render();
