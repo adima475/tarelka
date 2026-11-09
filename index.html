@@ -1098,7 +1098,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         // the menu on screen may have been replaced meanwhile: write only into the same meal of the same menu
         const cur = menuNow, t = cur && cur.created === menu.created ? cur.meals[idx] : null;
         if (!t || t.dish !== m.dish) continue;
-        if (ok) { t.img = url; t.imgOk = 1; }
+        if (ok) { t.img = url; t.imgOk = 2; }   // 2: picked by the v24 search (no shop products)
         else if ((t.picTries = (t.picTries || 0) + 1) >= 6) t.imgFail = true;
         else { await sleep(47000); continue; }                     // most likely the free limit: wait it out
         store.set("tarelka.menu", cur);
@@ -1109,7 +1109,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   function renderMenu(saved){
     menuNow = saved && saved.meals && saved.meals.length ? saved : null;
-    if (menuNow) for (const m of menuNow.meals) if (!m.imgOk || /pollinations/.test(m.img || "")) { delete m.img; delete m.imgOk; delete m.imgFail; delete m.picTries; }
+    if (menuNow) for (const m of menuNow.meals) if (m.imgOk !== 2) { delete m.img; delete m.imgOk; delete m.imgFail; delete m.picTries; }
     if (menuNow) setTimeout(drawMenuPictures, 0);
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
@@ -1124,10 +1124,19 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         (has ? `<small>из ${T[key]}${bad ? " ⚠︎" : " ✓"}</small>` : "") + `</div>`;
     };
     tot.innerHTML = `<div class="mgrid">${cell("Ккал","k","")}${cell("Белки","p"," г")}${cell("Жиры","f"," г")}${cell("Углев.","c"," г")}</div>` +
-      (off.length ? `<div class="mwarn">ИИ не попал в норму по: ${off.map(k => ({k:"калориям",p:"белкам",f:"жирам",c:"углеводам"})[k]).join(", ")}.</div>` : "");
+      (off.length ? `<div class="mwarn">Не сходится по: ${off.map(k => ({k:"калориям",p:"белкам",f:"жирам",c:"углеводам"})[k]).join(", ")}.</div>` : "");
     if (off.length) {
       const fix = document.createElement("button"); fix.className = "madd"; fix.style.background = "var(--card)";
-      fix.textContent = "🔧 Подогнать под мои КБЖУ"; fix.onclick = () => adjustMenu(saved, got);
+      fix.textContent = "🔧 Подогнать под мои КБЖУ";
+      fix.onclick = () => {
+        const fit = autoFit(saved.meals, T);
+        if (fit !== saved.meals && !menuOff(menuGot(fit), T).length) {      // grams alone were enough: done, no AI
+          const keep = fit.map((m, i) => ({ ...m, img: saved.meals[i].img, imgOk: saved.meals[i].imgOk }));
+          const s2 = { ...saved, meals: keep, created: Date.now() };
+          store.set("tarelka.menu", s2); renderMenu(s2);
+          const st = $("menuStatus"); st.className = "status"; st.textContent = "Граммовки пересчитаны под вашу норму.";
+        } else adjustMenu(saved, got);
+      };
       tot.append(fix);
     }
     if (saved.created) {
@@ -1186,6 +1195,51 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     for (const m of ["p","f","c"]) if (T[m] > 0 && Math.abs(got[m] - T[m]) > Math.max(8, T[m] * 0.12)) bad.push(m);
     return bad;
   }
+  // Fit the menu to the targets without the AI: every ingredient gets its own factor (0.5–2×) on its grams,
+  // chosen so the sum of kcal/P/F/C comes closest to the targets while the dishes change as little as possible
+  // (each factor is pulled towards 1). Nutrition per gram is the AI's own, so it just scales with the grams.
+  function fitMenu(meals, T){
+    const keys = ["k","p","f","c"].filter(k => T[k] > 0);
+    if (!keys.length) return null;
+    const items = [];
+    meals.forEach(m => m.ingredients.forEach(i => { if (i.grams > 0) items.push(i); }));
+    if (!items.length) return null;
+    const val = (i, k) => k === "k" ? i.kcal : i[k];
+    const w = { k: 3, p: 1.5, f: 1, c: 1 }, LAM = 0.004, LO = 0.5, HI = 2;
+    const sc = items.map(() => 1);
+    const err = () => { let e = 0; for (const k of keys) { let g = 0; items.forEach((it, j) => g += sc[j] * val(it, k)); e += w[k] * ((g - T[k]) / T[k]) ** 2; }
+      sc.forEach(x => e += LAM * (x - 1) ** 2); return e; };
+    // coordinate descent: each factor in turn is moved to its best value (the objective is a parabola in it)
+    for (let round = 0; round < 60; round++) {
+      for (let j = 0; j < items.length; j++) {
+        let a = LAM, b = LAM;                       // minimise a·x² − 2b·x  →  x = b/a
+        for (const k of keys) {
+          const v = val(items[j], k) / T[k]; if (!v) continue;
+          let rest = 0; items.forEach((it, q) => { if (q !== j) rest += sc[q] * val(it, k); });
+          a += w[k] * v * v; b += w[k] * v * (1 - rest / T[k]);
+        }
+        sc[j] = Math.min(HI, Math.max(LO, b / a));
+      }
+    }
+    // new grams, rounded the way a person would weigh them; nutrition recalculated for the rounded grams
+    const step = g => g >= 100 ? 10 : g >= 30 ? 5 : 1;
+    const out = meals.map(m => {
+      const ing = m.ingredients.map(i => {
+        const j = items.indexOf(i); if (j < 0) return { ...i };
+        const g0 = i.grams * sc[j], st = step(g0), g = Math.max(st, Math.round(g0 / st) * st), r = g / i.grams;
+        return { ...i, grams: g, kcal: Math.round(i.kcal * r), p: Math.round(i.p * r * 10) / 10, f: Math.round(i.f * r * 10) / 10, c: Math.round(i.c * r * 10) / 10 };
+      });
+      return { ...m, ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
+    });
+    return out;
+  }
+  const menuGot = meals => ({ k: sumBy(meals, "k"), p: sumBy(meals, "p"), f: sumBy(meals, "f"), c: sumBy(meals, "c") });
+  // how far a menu is from the targets (sum of relative misses), to keep the fitted menu only if it is closer
+  const menuMiss = (meals, T) => { const g = menuGot(meals); return ["k","p","f","c"].reduce((e, k) => e + (T[k] > 0 ? Math.abs(g[k] - T[k]) / T[k] : 0), 0); };
+  function autoFit(meals, T){
+    const fit = fitMenu(meals, T);
+    return fit && menuMiss(fit, T) < menuMiss(meals, T) - 0.005 ? fit : meals;
+  }
   const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","photo":"what is on the plate, in English, 8-15 words: every main component with its look, e.g. mashed potatoes with a baked chicken breast and cucumber slices","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
   let menuBusy = false;
   async function runMenu(prompt, T, keepCount){
@@ -1195,7 +1249,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     $("menuOut").style.opacity = ".45";            // the previous menu stays visible (dimmed) until the new one arrives
     st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
     try {
-      const meals = await askAI(prompt, null, (n, i, t) => {
+      let meals = await askAI(prompt, null, (n, i, t) => {
         st.innerHTML = '<span class="spinner"></span>' + (retryMsg(n, i, t) || "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
       }, s => {
         const ms = normalizeMenu(parseJSON(s));
@@ -1203,6 +1257,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         if (keepCount && ms.length !== keepCount) throw new Error("changed meal count");
         return ms;
       });
+      meals = autoFit(meals, T);
       if (keepCount && menuNow) meals.forEach((m, i) => { const old = menuNow.meals[i]; if (old && old.img && old.dish === m.dish) { m.img = old.img; m.imgOk = old.imgOk; } });
       const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
@@ -1339,7 +1394,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "23";
+  const APP_VERSION = "24";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){

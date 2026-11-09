@@ -12,12 +12,26 @@ const cache = new Map();   // lives while the function instance is warm
 
 const reply = (statusCode, obj, extra = {}) => ({ statusCode, headers: { ...CORS, ...extra }, body: JSON.stringify(obj) });
 
+// Each result carries "thumb":{"url":"//avatars.mds.yandex.net/i?id=…"}. Results that are shop products
+// (packaged goods: "shop_name"/"offer_url", or a store site) are skipped: we want a cooked dish.
+const SHOP = /"shop_name"|"offer_url"|market\.yandex|ozon\.ru|wildberries|auchan|perekrestok|vkusvill|lavka|sbermarket|kuper\.ru|magnit/i;
 function firstThumb(html) {
   const s = html.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-  // each result carries "thumb":{"url":"//avatars.mds.yandex.net/i?id=…","w":…}; the first one is result #1
-  const m = s.match(/"thumb":\{"url":"(\/\/avatars\.mds\.yandex\.net\/i\?id=[^"]+)"/)
-         || s.match(/"image":"(\/\/avatars\.mds\.yandex\.net\/i\?id=[^"]+)"/);
-  return m ? "https:" + m[1] : null;
+  const re = /"thumb":\{"url":"(\/\/avatars\.mds\.yandex\.net\/i\?id=[^"]+)"/g;
+  const hits = []; let m;
+  while ((m = re.exec(s))) hits.push({ url: m[1], at: m.index });
+  // 1st choice: a photo from a recipe page (its title says «рецепт»), that is a cooked dish;
+  // otherwise the first result that is not a shop product (shopScore is high for goods: 150+ vs 0–20 for articles)
+  let fallback = null;
+  for (let i = 0; i < hits.length && i < 30; i++) {
+    const chunk = s.slice(hits[i].at, i + 1 < hits.length ? hits[i + 1].at : hits[i].at + 4000);
+    const shop = SHOP.test(chunk) || +((chunk.match(/"shopScore":(\d+)/) || [])[1] || 0) >= 50;
+    if (shop) continue;
+    const title = (chunk.match(/"title":"([^"]*)/) || [])[1] || "";
+    if (/рецепт|recipe|пошагов/i.test(title)) return "https:" + hits[i].url;
+    if (!fallback) fallback = "https:" + hits[i].url;
+  }
+  return fallback;
 }
 
 module.exports.handler = async function (event) {
@@ -26,7 +40,8 @@ module.exports.handler = async function (event) {
   if (!q) return reply(400, { error: "no q" });
   if (cache.has(q)) return reply(200, { img: cache.get(q) }, { "Cache-Control": "public, max-age=604800" });
 
-  const url = "https://yandex.ru/images/search?text=" + encodeURIComponent(q);
+  // same search as the app's «фото блюда» link, so the picture matches what that link shows
+  const url = "https://yandex.ru/images/search?text=" + encodeURIComponent(q + " блюдо");
   let html;
   try {
     const r = await fetch(url, {
