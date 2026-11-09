@@ -171,7 +171,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 .meal .mt{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .meal .mk{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal .md{font-weight:600;font-size:16px;margin:4px 0 8px;display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
-.meal .memo{flex:none;width:46px;height:46px;border-radius:12px;background:var(--bg);display:grid;place-items:center;font-size:28px}
+.meal .memo{flex:none;position:relative;width:84px;height:84px;border-radius:14px;background:var(--bg);display:grid;place-items:center;font-size:36px;overflow:hidden}
+.meal .memo img{position:absolute;left:-8%;top:0;width:116%;height:116%;object-fit:cover;display:block}
+.meal .memo .mspin{position:absolute;right:5px;bottom:5px;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 .meal .mdn{display:flex;flex-direction:column}
 .meal .mdn small{font-weight:400;font-size:12px;color:var(--accent)}
 .meal ul{list-style:none;margin:0;padding:0;font-size:14px}
@@ -976,6 +978,21 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 
   // ---------- AI menu ----------
   let menuScope = "day";
+  // names of the n meals still ahead today, from the clock and what is already in today's diary
+  function restTitles(n){
+    const now = new Date(), h = now.getHours() + now.getMinutes() / 60;
+    const today = entries.filter(e => e.day === dayKey(now)).map(e => { const d = new Date(e.ts); return d.getHours() + d.getMinutes() / 60; });
+    const ate = (a, b) => today.some(x => x >= a && x < b);
+    const slots = [["Завтрак", 0, 11], ["Обед", 11, 16], ["Полдник", 15, 18], ["Ужин", 16, 21.5], ["Поздний перекус", 19, 24]]
+      .filter(([t, a, b]) => b > h && !(t === "Завтрак" && ate(4, 11)) && !(t === "Обед" && ate(12, 16)) && !(t === "Ужин" && ate(17.5, 22)));
+    let names = slots.map(x => x[0]);
+    if (!names.length) names = ["Поздний перекус"];
+    // too many slots: keep the main meals first; too few: add snacks between them
+    const prio = ["Ужин", "Обед", "Завтрак", "Полдник", "Поздний перекус"];
+    if (names.length > n) { const keep = prio.filter(x => names.includes(x)).slice(0, n); names = names.filter(t => keep.includes(t)); }
+    while (names.length < n) names.splice(Math.max(1, names.length - 1), 0, "Перекус");
+    return names;
+  }
   const eatenOn = key => entries.filter(e => e.day === key).reduce((s, e) =>
     ({ k: s.k + num(e.k), p: s.p + (parseNum(e.p) || 0), f: s.f + (parseNum(e.f) || 0), c: s.c + (parseNum(e.c) || 0) }), { k:0, p:0, f:0, c:0 });
   function setMenuScope(v){
@@ -1022,13 +1039,50 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 }));
       // totals are summed here from the ingredients, so the numbers on screen always add up
       const dishName = String(m.dish || m.name || "");
-      return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")),
+      return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")), photo: String(m.photo || "").slice(0, 160),
         ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
     }).filter(m => m.ingredients.length);
     if (!meals.length) throw new Error("ИИ не прислал меню — попробуйте ещё раз");
     return meals;
   }
+  // ---- dish pictures: drawn by Pollinations (free, no key, reachable without VPN) ----
+  // The free tier draws one picture per ~45 s per IP, so pictures are made one at a time in the background,
+  // the emoji stays as a placeholder, and each finished picture is saved with the menu (small JPEG) so it is drawn once.
+  let menuNow = null, picsRunning = false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const strHash = t => { let h = 7; for (const ch of t) h = (h * 31 + ch.codePointAt(0)) >>> 0; return h % 100000; };
+  // fetch() from a page is refused (bot check), but a plain <img> loads fine; the free tier draws ~1 picture per 45 s,
+  // so pictures load one at a time and on refusal we wait and retry. The URL is stored: the same prompt+seed gives
+  // the same picture, and the browser and server caches return it instantly next time.
+  const picURL = m => "https://image.pollinations.ai/prompt/" + encodeURIComponent((m.photo || m.dish || m.title) +
+    ", realistic appetizing food photography, served on a plate, top view, natural light") + "?width=384&height=384&nologo=true&seed=" + strHash(m.dish + m.photo);
+  const loadImg = src => new Promise(res => { const i = new Image(); let done = false;
+    const end = ok => { if (!done) { done = true; res(ok); } };
+    i.onload = () => end(i.naturalWidth > 0); i.onerror = () => end(false); setTimeout(() => end(false), 90000); i.src = src; });
+  const picHTML = src => `<img src="${escapeHTML(src)}" alt="">`;
+  async function drawMenuPictures(){
+    if (picsRunning) return; picsRunning = true;
+    try {
+      for (let guard = 0; guard < 40; guard++) {
+        const menu = menuNow; if (!menu) break;
+        const idx = menu.meals.findIndex(m => !m.img && !m.imgFail); if (idx < 0) break;
+        const m = menu.meals[idx], url = picURL(m);
+        const ok = await loadImg(url);
+        // the menu on screen may have been replaced meanwhile: write only into the same meal of the same menu
+        const cur = menuNow, t = cur && cur.created === menu.created ? cur.meals[idx] : null;
+        if (!t || t.dish !== m.dish) continue;
+        if (ok) t.img = url;
+        else if ((t.picTries = (t.picTries || 0) + 1) >= 4) t.imgFail = true;
+        else { await sleep(47000); continue; }                 // most likely the free limit: wait it out
+        store.set("tarelka.menu", cur);
+        const tile = document.querySelector(`#menuOut .memo[data-idx="${idx}"]`);
+        if (tile) tile.innerHTML = t.img ? picHTML(t.img) : escapeHTML(t.emoji || "🍽️");
+      }
+    } finally { picsRunning = false; }
+  }
   function renderMenu(saved){
+    menuNow = saved && saved.meals && saved.meals.length ? saved : null;
+    if (menuNow) setTimeout(drawMenuPictures, 0);
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
     const meals = saved.meals;
@@ -1064,7 +1118,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const dish = document.createElement("a"); dish.className = "md";
       dish.href = "https://yandex.ru/images/search?text=" + encodeURIComponent((m.dish || m.title) + " блюдо");
       dish.target = "_blank"; dish.rel = "noopener"; dish.title = "Посмотреть фото блюда";
-      const em = document.createElement("span"); em.className = "memo"; em.textContent = m.emoji || pickEmoji("", m.dish + " " + m.ingredients.map(i => i.name).join(" "));
+      const em = document.createElement("span"); em.className = "memo"; em.dataset.idx = idx;
+      if (m.img) em.innerHTML = picHTML(m.img);
+      else em.innerHTML = escapeHTML(m.emoji || pickEmoji("", m.dish + " " + m.ingredients.map(i => i.name).join(" "))) + (m.imgFail ? "" : '<i class="mspin"></i>');
       const dn = document.createElement("span"); dn.className = "mdn"; dn.innerHTML = escapeHTML(m.dish) + '<small>📷 фото блюда</small>';
       dish.append(em, dn);
       const ul = document.createElement("ul");
@@ -1102,7 +1158,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     for (const m of ["p","f","c"]) if (T[m] > 0 && Math.abs(got[m] - T[m]) > Math.max(8, T[m] * 0.12)) bad.push(m);
     return bad;
   }
-  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
+  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","photo":"short English description of the dish for a food photo","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
   let menuBusy = false;
   async function runMenu(prompt, T, keepCount){
     const st = $("menuStatus");
@@ -1119,6 +1175,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         if (keepCount && ms.length !== keepCount) throw new Error("changed meal count");
         return ms;
       });
+      if (keepCount && menuNow) meals.forEach((m, i) => { const old = menuNow.meals[i]; if (old && old.img && old.dish === m.dish) m.img = old.img; });
       const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
@@ -1135,6 +1192,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     settings.menuPrefs = prefs; store.set("tarelka.settings", settings);
     const goalTxt = { lose: "похудеть (больше белка, сытные блюда)", keep: "поддерживать вес", gain: "набрать вес" }[settings.profile.goal] || "поддерживать вес";
     const scope = menuScope === "day" ? "весь день" : "оставшуюся часть дня";
+    const eatenToday = entries.filter(e => e.day === dayKey(new Date())).sort((a, b) => a.ts - b.ts)
+      .map(e => `${hhmm(new Date(e.ts))} ${e.name || "еда"}`).join("; ");
     const macros = [T.p && `белки ${T.p} г`, T.f && `жиры ${T.f} г`, T.c && `углеводы ${T.c} г`].filter(Boolean).join(", ");
     const prompt = `Ты диетолог. Составь меню на ${scope} из ${n} приём(ов) пищи.
 ГЛАВНОЕ — точно попасть в норму на всё меню вместе: ${T.k} ккал (±5%)${macros ? `; ${macros} (каждое ±10%)` : ""}.
@@ -1143,14 +1202,15 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 Цель человека: ${goalTxt}. Пожелания: ${prefs || "нет"}.
 Используй обычные продукты из российских магазинов. Для каждого продукта укажи вес в граммах и уточни состояние, где это важно
 (например «гречка сухая», «куриное филе сырое», «молоко 2,5%»). Калории и БЖУ каждого продукта считай по стандартным таблицам для указанного веса.
-Названия приёмов: Завтрак, Перекус, Обед, Полдник, Ужин — по смыслу и по количеству.
+${menuScope === "day" ? "Названия приёмов: Завтрак, Перекус, Обед, Полдник, Ужин — по смыслу и по количеству." :
+  `Сейчас ${hhmm(new Date())}. Сегодня уже съедено: ${eatenToday || "ничего"}. Приёмы пищи — только те, что ещё впереди; названия СТРОГО по порядку: ${restTitles(n).join(", ")}.`}
 Ответь ТОЛЬКО JSON без пояснений, по-русски:
 ${JSON_SHAPE}`;
     runMenu(prompt, T);
   };
   function adjustMenu(saved, got){
     const T = saved.targets, n = saved.meals.length, compact = { meals: saved.meals.map(m => ({ title: m.title, dish: m.dish, emoji: m.emoji, recipe: m.recipe,
-      ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
+      photo: m.photo, ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
     const line = (lbl, k, u) => T[k] > 0 ? `${lbl}: сейчас ${got[k]}${u}, нужно ${T[k]}${u}` : "";
     const prompt = `Вот меню (JSON). Его сумма не попадает в норму:
 ${[line("ккал","k",""), line("белки","p"," г"), line("жиры","f"," г"), line("углеводы","c"," г")].filter(Boolean).join("\n")}
@@ -1251,7 +1311,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "19";
+  const APP_VERSION = "20";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
