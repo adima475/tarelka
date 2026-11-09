@@ -979,6 +979,19 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 
   // ---------- AI menu ----------
   let menuScope = "day";
+  // Each tab keeps its own menu: making a menu for the rest of the day no longer replaces the whole-day one.
+  const MENU_KEY = { day: "tarelka.menu", rest: "tarelka.menuRest" };
+  const saveMenu = m => store.set(MENU_KEY[m.scope === "rest" ? "rest" : "day"], m);
+  const loadMenu = v => store.get(MENU_KEY[v], null);
+  { // menus saved before v26 have no tab: one made for less than the daily norm was a rest-of-day menu
+    const old = loadMenu("day");
+    if (old && !old.scope) {
+      const k = (old.targets && old.targets.k) || old.target || 0;
+      old.scope = k && k < settings.goal.k ? "rest" : "day";
+      if (old.scope === "rest" && !loadMenu("rest")) { store.set(MENU_KEY.rest, old); store.set(MENU_KEY.day, null); }
+      else { old.scope = "day"; store.set(MENU_KEY.day, old); }
+    }
+  }
   // names of the n meals still ahead today, from the clock and what is already in today's diary
   function restTitles(n){
     const now = new Date(), h = now.getHours() + now.getMinutes() / 60;
@@ -1007,6 +1020,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       : "Это сколько осталось до нормы сегодня. Можно поправить.";
     const h = new Date().getHours();
     $("menuMeals").value = v === "day" ? 4 : (dayOffset !== 0 ? 3 : h < 11 ? 3 : h < 16 ? 2 : 1);
+    renderMenu(loadMenu(v));
+    if (menuBusy) return;                     // keep the "making the menu…" status visible
     $("menuStatus").className = "status";
     $("menuStatus").textContent = v === "rest" && rest < 150 ? "На сегодня калорий почти не осталось (" + Math.max(0, rest) + " ккал)." : "";
   }
@@ -1014,7 +1029,6 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   $("openMenu").onclick = () => {
     $("menuPrefs").value = settings.menuPrefs || "";
     setMenuScope(menuScope);
-    renderMenu(store.get("tarelka.menu", null));
     if (!menuBusy) { $("menuStatus").className = "status"; $("menuStatus").textContent = ""; }   // no stale error from an earlier run
     openSheet("menu");
   };
@@ -1102,7 +1116,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         if (ok) { t.img = url; t.imgOk = 3; }   // 3: picked by the v25 search (recipe photos, no shop products)
         else if ((t.picTries = (t.picTries || 0) + 1) >= 6) t.imgFail = true;
         else { await sleep(47000); continue; }                     // most likely the free limit: wait it out
-        store.set("tarelka.menu", cur);
+        saveMenu(cur);
         const tile = document.querySelector(`#menuOut .memo[data-idx="${idx}"]`);
         if (tile) tile.innerHTML = t.img ? picHTML(t.img) : escapeHTML(t.emoji || "🍽️");
       }
@@ -1134,7 +1148,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         if (fit !== saved.meals && !menuOff(menuGot(fit), T).length) {      // grams alone were enough: done, no AI
           const keep = fit.map((m, i) => ({ ...m, img: saved.meals[i].img, imgOk: saved.meals[i].imgOk }));
           const s2 = { ...saved, meals: keep, created: Date.now() };
-          store.set("tarelka.menu", s2); renderMenu(s2);
+          saveMenu(s2); renderMenu(s2);
           const st = $("menuStatus"); st.className = "status"; st.textContent = "Граммовки пересчитаны под вашу норму.";
         } else adjustMenu(saved, got);
       };
@@ -1183,7 +1197,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         entries.push({ id, ts: d.getTime(), day: dayKey(d),
           name: m.dish || m.title, k: m.k, p: m.p, f: m.f, c: m.c, thumb: null });
         store.set("tarelka.entries", entries);
-        m.added = true; m.entryId = id; store.set("tarelka.menu", saved);
+        m.added = true; m.entryId = id; saveMenu(saved);
         add.textContent = "✓ Добавлено в дневник"; add.disabled = true; render();
       };
       box.append(add); out.append(box);
@@ -1243,9 +1257,10 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","photo":"what is on the plate, in English, 8-15 words: every main component with its look, e.g. mashed potatoes with a baked chicken breast and cucumber slices","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
   let menuBusy = false;
-  async function runMenu(prompt, T, keepCount){
+  async function runMenu(prompt, T, keepCount, scope){
     const st = $("menuStatus");
     if (menuBusy) return;
+    scope = scope || menuScope;
     menuBusy = true; $("menuGo").disabled = true;
     $("menuOut").style.opacity = ".45";            // the previous menu stays visible (dimmed) until the new one arrives
     st.className = "status"; st.innerHTML = '<span class="spinner"></span>Составляю меню… бесплатные модели иногда думают до минуты. Не сворачивайте приложение.';
@@ -1259,9 +1274,12 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         return ms;
       });
       meals = autoFit(meals, T);
-      if (keepCount && menuNow) meals.forEach((m, i) => { const old = menuNow.meals[i]; if (old && old.img && old.dish === m.dish) { m.img = old.img; m.imgOk = old.imgOk; } });
-      const saved = { targets: T, created: Date.now(), meals };
-      store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
+      const prev = loadMenu(scope);
+      if (keepCount && prev) meals.forEach((m, i) => { const old = prev.meals[i]; if (old && old.img && old.dish === m.dish) { m.img = old.img; m.imgOk = old.imgOk; } });
+      const saved = { scope, targets: T, created: Date.now(), meals };
+      saveMenu(saved); st.textContent = "";
+      if (menuScope === scope) renderMenu(saved);
+      else { st.className = "status"; st.textContent = "Меню «" + (scope === "day" ? "На весь день" : "На остаток дня") + "» готово — откройте эту вкладку."; }
     } catch (e) {
       st.className = "status err";
       st.innerHTML = errText(e) + ($("menuOut").children.length ? "<br>Новое меню не составлено — ниже ваше предыдущее." : "");
@@ -1303,7 +1321,7 @@ ${[line("ккал","k",""), line("белки","p"," г"), line("жиры","f"," 
 Сохрани блюда и пожелания, насколько возможно. Калории и БЖУ продуктов — по стандартным таблицам для нового веса.
 Ответь ТОЛЬКО исправленным JSON в том же формате:
 ${JSON.stringify(compact)}`;
-    runMenu(prompt, T, n);
+    runMenu(prompt, T, n, saved.scope === "rest" ? "rest" : "day");
   }
 
   // ---------- settings & goal calculator ----------
@@ -1395,7 +1413,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "25";
+  const APP_VERSION = "26";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
