@@ -172,7 +172,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 .meal .mk{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal .md{font-weight:600;font-size:16px;margin:4px 0 8px;display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
 .meal .memo{flex:none;position:relative;width:84px;height:84px;border-radius:14px;background:var(--bg);display:grid;place-items:center;font-size:36px;overflow:hidden}
-.meal .memo img{position:absolute;left:0;top:0;width:116%;height:116%;object-fit:cover;display:block}
+.meal .memo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.meal .memo img.drawn{right:auto;bottom:auto;width:116%;height:116%}
 .meal .memo .mspin{position:absolute;right:5px;bottom:5px;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 .meal .mdn{display:flex;flex-direction:column}
 .meal .mdn small{font-weight:400;font-size:12px;color:var(--accent)}
@@ -1074,15 +1075,26 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     const i = await loadImg(url, true);
     return !!i && !isPlaceholder(i);
   }
-  const picHTML = src => `<img src="${escapeHTML(src)}" alt="" referrerpolicy="no-referrer">`;
+  // Real photos first: our Yandex Cloud function (proxy/index.js) returns the first Yandex Images result for the dish name.
+  const PHOTO_FN = "https://functions.yandexcloud.net/d4ehfnph75e58ohvkps6";
+  async function yandexPhoto(m){
+    try {
+      const r = await fetch(PHOTO_FN + "?q=" + encodeURIComponent(m.dish), { signal: AbortSignal.timeout(15000) });
+      const j = r.ok ? await r.json() : null;
+      if (!j || !/^https:\/\/avatars\.mds\.yandex\.net\//.test(j.img || "")) return null;
+      return (await loadImg(j.img, false)) ? j.img : null;
+    } catch { return null; }
+  }
+  const picHTML = src => `<img src="${escapeHTML(src)}" alt="" referrerpolicy="no-referrer"${/pollinations/.test(src) ? ' class="drawn"' : ""}>`;
   async function drawMenuPictures(){
     if (picsRunning) return; picsRunning = true;
     try {
       for (let guard = 0; guard < 60; guard++) {
         const menu = menuNow; if (!menu) break;
         const idx = menu.meals.findIndex(m => !m.img && !m.imgFail); if (idx < 0) break;
-        const m = menu.meals[idx], url = picURL(m);
-        const ok = await drawPicture(url);
+        const m = menu.meals[idx];
+        let url = await yandexPhoto(m), ok = !!url;
+        if (!ok) { url = picURL(m); ok = await drawPicture(url); }     // no photo: draw one
         // the menu on screen may have been replaced meanwhile: write only into the same meal of the same menu
         const cur = menuNow, t = cur && cur.created === menu.created ? cur.meals[idx] : null;
         if (!t || t.dish !== m.dish) continue;
@@ -1097,7 +1109,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   function renderMenu(saved){
     menuNow = saved && saved.meals && saved.meals.length ? saved : null;
-    if (menuNow) for (const m of menuNow.meals) if (!m.imgOk) { delete m.img; delete m.imgFail; delete m.picTries; }
+    if (menuNow) for (const m of menuNow.meals) if (!m.imgOk || /pollinations/.test(m.img || "")) { delete m.img; delete m.imgOk; delete m.imgFail; delete m.picTries; }
     if (menuNow) setTimeout(drawMenuPictures, 0);
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
@@ -1327,7 +1339,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "22";
+  const APP_VERSION = "23";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
