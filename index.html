@@ -172,7 +172,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 .meal .mk{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .meal .md{font-weight:600;font-size:16px;margin:4px 0 8px;display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
 .meal .memo{flex:none;position:relative;width:84px;height:84px;border-radius:14px;background:var(--bg);display:grid;place-items:center;font-size:36px;overflow:hidden}
-.meal .memo img{position:absolute;left:-8%;top:0;width:116%;height:116%;object-fit:cover;display:block}
+.meal .memo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .meal .memo .mspin{position:absolute;right:5px;bottom:5px;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
 .meal .mdn{display:flex;flex-direction:column}
 .meal .mdn small{font-weight:400;font-size:12px;color:var(--accent)}
@@ -1039,41 +1039,57 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 }));
       // totals are summed here from the ingredients, so the numbers on screen always add up
       const dishName = String(m.dish || m.name || "");
-      return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")), photo: String(m.photo || "").slice(0, 160),
+      return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")), wiki: String(m.wiki || "").slice(0, 80),
         ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
     }).filter(m => m.ingredients.length);
     if (!meals.length) throw new Error("ИИ не прислал меню — попробуйте ещё раз");
     return meals;
   }
-  // ---- dish pictures: drawn by Pollinations (free, no key, reachable without VPN) ----
-  // The free tier draws one picture per ~45 s per IP, so pictures are made one at a time in the background,
-  // the emoji stays as a placeholder, and each finished picture is saved with the menu (small JPEG) so it is drawn once.
+  // ---- dish pictures: real photos from Russian Wikipedia (free, no key, CORS, reachable without VPN) ----
+  // The AI names the closest Wikipedia article (e.g. «Гречневая каша»); if it has no picture we try the dish name
+  // and the main ingredient, then a search. The thumbnail URL is saved with the menu.
   let menuNow = null, picsRunning = false;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const strHash = t => { let h = 7; for (const ch of t) h = (h * 31 + ch.codePointAt(0)) >>> 0; return h % 100000; };
-  // fetch() from a page is refused (bot check), but a plain <img> loads fine; the free tier draws ~1 picture per 45 s,
-  // so pictures load one at a time and on refusal we wait and retry. The URL is stored: the same prompt+seed gives
-  // the same picture, and the browser and server caches return it instantly next time.
-  const picURL = m => "https://image.pollinations.ai/prompt/" + encodeURIComponent((m.photo || m.dish || m.title) +
-    ", realistic appetizing food photography, served on a plate, top view, natural light") + "?width=384&height=384&nologo=true&seed=" + strHash(m.dish + m.photo);
-  const loadImg = src => new Promise(res => { const i = new Image(); let done = false;
-    const end = ok => { if (!done) { done = true; res(ok); } };
-    i.onload = () => end(i.naturalWidth > 0); i.onerror = () => end(false); setTimeout(() => end(false), 90000); i.src = src; });
-  const picHTML = src => `<img src="${escapeHTML(src)}" alt="">`;
+  const WIKI = "https://ru.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=240&";
+  // "Куриное филе сырое" → "Куриное", "Гречка сухая" → "Гречка", "Молоко 2,5%" → "Молоко" (state words are not article names)
+  const STATE = /^(сыр(ое|ая|ой|ые)|сух(ая|ой|ое|ие)|отварн|вар[её]н|свеж|заморож|консерв|запеч|филе|жарен|туш[её]н|обезжир)/i;
+  const cleanName = t => String(t || "").replace(/\(.*?\)|\d+([.,]\d+)?\s*%?/g, " ")
+    .split(/\s+/).filter(w => w && !STATE.test(w)).join(" ").trim();
+  async function wikiThumb(m){
+    const first = m.ingredients[0] && m.ingredients[0].name;
+    const titles = [...new Set([m.wiki, m.dish, cleanName(first), first].map(x => String(x || "").trim()).filter(Boolean))];
+    // 1) exact titles (one request for all of them), first one in our order that has a picture
+    const j = await (await fetch(WIKI + "titles=" + encodeURIComponent(titles.join("|")))).json();
+    const q = j.query || {}, alias = {};
+    for (const r of [...(q.normalized || []), ...(q.redirects || [])]) alias[r.from] = r.to;
+    const pages = Object.values(q.pages || {});
+    for (const t of titles) {
+      let x = t; for (let k = 0; k < 3 && alias[x]; k++) x = alias[x];
+      const pg = pages.find(pg => pg.title === x);
+      if (pg && pg.thumbnail) return pg.thumbnail.source;
+    }
+    // 2) search by the article name the AI gave, or the main ingredient
+    const term = m.wiki || cleanName(first) || m.dish;
+    const s2 = await (await fetch(WIKI + "generator=search&gsrnamespace=0&gsrlimit=3&gsrsearch=" + encodeURIComponent(term))).json();
+    const hit = Object.values((s2.query || {}).pages || {}).sort((a, b) => a.index - b.index).find(pg => pg.thumbnail);
+    return hit ? hit.thumbnail.source : null;
+  }
+  const picHTML = src => `<img src="${escapeHTML(src)}" alt="" loading="lazy">`;
   async function drawMenuPictures(){
     if (picsRunning) return; picsRunning = true;
     try {
       for (let guard = 0; guard < 40; guard++) {
         const menu = menuNow; if (!menu) break;
         const idx = menu.meals.findIndex(m => !m.img && !m.imgFail); if (idx < 0) break;
-        const m = menu.meals[idx], url = picURL(m);
-        const ok = await loadImg(url);
+        const m = menu.meals[idx];
+        let src = null, failed = false;
+        try { src = await wikiThumb(m); } catch { failed = true; }
         // the menu on screen may have been replaced meanwhile: write only into the same meal of the same menu
         const cur = menuNow, t = cur && cur.created === menu.created ? cur.meals[idx] : null;
         if (!t || t.dish !== m.dish) continue;
-        if (ok) t.img = url;
-        else if ((t.picTries = (t.picTries || 0) + 1) >= 4) t.imgFail = true;
-        else { await sleep(47000); continue; }                 // most likely the free limit: wait it out
+        if (src) t.img = src;
+        else if (!failed || (t.picTries = (t.picTries || 0) + 1) >= 3) t.imgFail = true;   // nothing found, or the network kept failing
+        else { await sleep(4000); continue; }
         store.set("tarelka.menu", cur);
         const tile = document.querySelector(`#menuOut .memo[data-idx="${idx}"]`);
         if (tile) tile.innerHTML = t.img ? picHTML(t.img) : escapeHTML(t.emoji || "🍽️");
@@ -1082,6 +1098,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   function renderMenu(saved){
     menuNow = saved && saved.meals && saved.meals.length ? saved : null;
+    if (menuNow) for (const m of menuNow.meals) if (m.img && /pollinations/.test(m.img)) { delete m.img; delete m.imgFail; delete m.picTries; }
     if (menuNow) setTimeout(drawMenuPictures, 0);
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
@@ -1158,7 +1175,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     for (const m of ["p","f","c"]) if (T[m] > 0 && Math.abs(got[m] - T[m]) > Math.max(8, T[m] * 0.12)) bad.push(m);
     return bad;
   }
-  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","photo":"short English description of the dish for a food photo","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
+  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","wiki":"точное название статьи русской Википедии про это блюдо или его основу, например Гречневая каша, Омлет, Творог, Сёмга","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
   let menuBusy = false;
   async function runMenu(prompt, T, keepCount){
     const st = $("menuStatus");
@@ -1210,7 +1227,7 @@ ${JSON_SHAPE}`;
   };
   function adjustMenu(saved, got){
     const T = saved.targets, n = saved.meals.length, compact = { meals: saved.meals.map(m => ({ title: m.title, dish: m.dish, emoji: m.emoji, recipe: m.recipe,
-      photo: m.photo, ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
+      wiki: m.wiki, ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
     const line = (lbl, k, u) => T[k] > 0 ? `${lbl}: сейчас ${got[k]}${u}, нужно ${T[k]}${u}` : "";
     const prompt = `Вот меню (JSON). Его сумма не попадает в норму:
 ${[line("ккал","k",""), line("белки","p"," г"), line("жиры","f"," г"), line("углеводы","c"," г")].filter(Boolean).join("\n")}
@@ -1311,7 +1328,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "20";
+  const APP_VERSION = "21";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
