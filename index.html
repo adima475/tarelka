@@ -1079,7 +1079,8 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   const PHOTO_FN = "https://functions.yandexcloud.net/d4ehfnph75e58ohvkps6";
   async function yandexPhoto(m){
     try {
-      const r = await fetch(PHOTO_FN + "?q=" + encodeURIComponent(m.dish), { signal: AbortSignal.timeout(15000) });
+      // &v= changes whenever the function's choice of photo changes: the phone keeps answers for a week (Cache-Control)
+      const r = await fetch(PHOTO_FN + "?q=" + encodeURIComponent(m.dish) + "&v=3", { signal: AbortSignal.timeout(15000) });
       const j = r.ok ? await r.json() : null;
       if (!j || !/^https:\/\/avatars\.mds\.yandex\.net\//.test(j.img || "")) return null;
       return (await loadImg(j.img, false)) ? j.img : null;
@@ -1098,7 +1099,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
         // the menu on screen may have been replaced meanwhile: write only into the same meal of the same menu
         const cur = menuNow, t = cur && cur.created === menu.created ? cur.meals[idx] : null;
         if (!t || t.dish !== m.dish) continue;
-        if (ok) { t.img = url; t.imgOk = 2; }   // 2: picked by the v24 search (no shop products)
+        if (ok) { t.img = url; t.imgOk = 3; }   // 3: picked by the v25 search (recipe photos, no shop products)
         else if ((t.picTries = (t.picTries || 0) + 1) >= 6) t.imgFail = true;
         else { await sleep(47000); continue; }                     // most likely the free limit: wait it out
         store.set("tarelka.menu", cur);
@@ -1109,7 +1110,7 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   function renderMenu(saved){
     menuNow = saved && saved.meals && saved.meals.length ? saved : null;
-    if (menuNow) for (const m of menuNow.meals) if (m.imgOk !== 2) { delete m.img; delete m.imgOk; delete m.imgFail; delete m.picTries; }
+    if (menuNow) for (const m of menuNow.meals) if (m.imgOk !== 3) { delete m.img; delete m.imgOk; delete m.imgFail; delete m.picTries; }
     if (menuNow) setTimeout(drawMenuPictures, 0);
     const out = $("menuOut"); out.innerHTML = "";
     if (!saved || !saved.meals || !saved.meals.length) return;
@@ -1394,7 +1395,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "24";
+  const APP_VERSION = "25";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
