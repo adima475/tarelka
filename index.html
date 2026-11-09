@@ -170,7 +170,10 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
 .meal .mh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .meal .mt{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .meal .mk{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
-.meal .md{font-weight:600;font-size:16px;margin:2px 0 8px}
+.meal .md{font-weight:600;font-size:16px;margin:4px 0 8px;display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.meal .memo{flex:none;width:46px;height:46px;border-radius:12px;background:var(--bg);display:grid;place-items:center;font-size:28px}
+.meal .mdn{display:flex;flex-direction:column}
+.meal .mdn small{font-weight:400;font-size:12px;color:var(--accent)}
 .meal ul{list-style:none;margin:0;padding:0;font-size:14px}
 .meal li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px dashed var(--line)}
 .meal li:first-child{border-top:0}
@@ -1000,13 +1003,26 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   $("menuBg").onclick = $("menuClose").onclick = () => closeSheet("menu");
 
   const sumBy = (arr, f) => Math.round(arr.reduce((s, x) => s + (parseNum(x[f]) || 0), 0));
+  // one emoji per dish: the AI's if it sent a real one, else guessed from the dish and its ingredients
+  const EMOJI_RULES = [[/омлет|яичн|яйц/,"🍳"],[/салат/,"🥗"],[/суп|борщ|щи|бульон|солянк/,"🍲"],[/каш|овсян|гречк|рис|пшен|киноа|булгур/,"🥣"],
+    [/творог|сырник|йогурт|кефир/,"🥛"],[/рыб|лосос|тунец|треск|минта|семг|форел|скумбр/,"🐟"],[/кревет|морепр/,"🦐"],[/куриц|курин|индейк|грудк/,"🍗"],
+    [/говяд|свинин|стейк|котлет|фарш|мяс/,"🥩"],[/паст|макарон|спагет/,"🍝"],[/бутерброд|тост|сэндвич|хлеб|лаваш/,"🥪"],[/блин|олад/,"🥞"],
+    [/смузи|коктейл/,"🥤"],[/банан|ябл|ягод|фрукт|апельс|груш/,"🍎"],[/орех|миндал/,"🥜"],[/картоф|пюре/,"🥔"],[/овощ|брокк|кабач|тушен/,"🥦"]];
+  function pickEmoji(e, text){
+    e = String(e || "").trim();
+    if (e && e.length <= 8 && /\p{Extended_Pictographic}/u.test(e)) return e;
+    const t = text.toLowerCase();
+    for (const [re, em] of EMOJI_RULES) if (re.test(t)) return em;
+    return "🍽️";
+  }
   function normalizeMenu(d){
     const meals = (Array.isArray(d.meals) ? d.meals : []).map(m => {
       const ing = (Array.isArray(m.ingredients) ? m.ingredients : []).map(i => ({
         name: String(i.name || "продукт"), grams: num(i.grams), kcal: num(i.kcal ?? i.calories),
         p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 }));
       // totals are summed here from the ingredients, so the numbers on screen always add up
-      return { title: String(m.title || "Приём пищи"), dish: String(m.dish || m.name || ""), recipe: String(m.recipe || ""),
+      const dishName = String(m.dish || m.name || "");
+      return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")),
         ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
     }).filter(m => m.ingredients.length);
     if (!meals.length) throw new Error("ИИ не прислал меню — попробуйте ещё раз");
@@ -1045,7 +1061,12 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const t = document.createElement("span"); t.className = "mt"; t.textContent = m.title;
       const k = document.createElement("span"); k.className = "mk"; k.textContent = m.k + " ккал";
       head.append(t, k);
-      const dish = document.createElement("div"); dish.className = "md"; dish.textContent = m.dish;
+      const dish = document.createElement("a"); dish.className = "md";
+      dish.href = "https://yandex.ru/images/search?text=" + encodeURIComponent((m.dish || m.title) + " блюдо");
+      dish.target = "_blank"; dish.rel = "noopener"; dish.title = "Посмотреть фото блюда";
+      const em = document.createElement("span"); em.className = "memo"; em.textContent = m.emoji || pickEmoji("", m.dish + " " + m.ingredients.map(i => i.name).join(" "));
+      const dn = document.createElement("span"); dn.className = "mdn"; dn.innerHTML = escapeHTML(m.dish) + '<small>📷 фото блюда</small>';
+      dish.append(em, dn);
       const ul = document.createElement("ul");
       for (const i of m.ingredients) {
         const li = document.createElement("li");
@@ -1081,9 +1102,9 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     for (const m of ["p","f","c"]) if (T[m] > 0 && Math.abs(got[m] - T[m]) > Math.max(8, T[m] * 0.12)) bad.push(m);
     return bad;
   }
-  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
+  const JSON_SHAPE = `{"meals":[{"title":"Завтрак","dish":"название блюда","emoji":"один эмодзи блюда","ingredients":[{"name":"продукт","grams":число,"kcal":число,"p":число,"f":число,"c":число}],"recipe":"как приготовить, 1–2 предложения"}]}`;
   let menuBusy = false;
-  async function runMenu(prompt, T){
+  async function runMenu(prompt, T, keepCount){
     const st = $("menuStatus");
     if (menuBusy) return;
     menuBusy = true; $("menuGo").disabled = true;
@@ -1092,7 +1113,12 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     try {
       const meals = await askAI(prompt, null, (n, i, t) => {
         st.innerHTML = '<span class="spinner"></span>' + (retryMsg(n, i, t) || "ИИ пишет меню… " + Math.min(99, Math.round(n / 25)) + "%");
-      }, s => normalizeMenu(parseJSON(s)));
+      }, s => {
+        const ms = normalizeMenu(parseJSON(s));
+        // a reply that dropped or added meals is treated like a bad reply: the next model gets the same task
+        if (keepCount && ms.length !== keepCount) throw new Error("changed meal count");
+        return ms;
+      });
       const saved = { targets: T, created: Date.now(), meals };
       store.set("tarelka.menu", saved); st.textContent = ""; renderMenu(saved);
     } catch (e) {
@@ -1123,16 +1149,17 @@ ${JSON_SHAPE}`;
     runMenu(prompt, T);
   };
   function adjustMenu(saved, got){
-    const T = saved.targets, compact = { meals: saved.meals.map(m => ({ title: m.title, dish: m.dish, recipe: m.recipe,
+    const T = saved.targets, n = saved.meals.length, compact = { meals: saved.meals.map(m => ({ title: m.title, dish: m.dish, emoji: m.emoji, recipe: m.recipe,
       ingredients: m.ingredients.map(i => ({ name: i.name, grams: i.grams, kcal: i.kcal, p: Math.round(i.p), f: Math.round(i.f), c: Math.round(i.c) })) })) };
     const line = (lbl, k, u) => T[k] > 0 ? `${lbl}: сейчас ${got[k]}${u}, нужно ${T[k]}${u}` : "";
     const prompt = `Вот меню (JSON). Его сумма не попадает в норму:
 ${[line("ккал","k",""), line("белки","p"," г"), line("жиры","f"," г"), line("углеводы","c"," г")].filter(Boolean).join("\n")}
 Исправь меню: меняй граммовки, при необходимости замени или добавь продукты, чтобы сумма попала в норму (ккал ±5%, каждое из БЖУ ±10%).
+СТРОГО: в ответе должно быть ровно ${n} приём(ов) пищи — те же, с теми же названиями (title) и в том же порядке. Не добавляй и не убирай приёмы пищи, меняй только продукты и граммовки внутри них.
 Сохрани блюда и пожелания, насколько возможно. Калории и БЖУ продуктов — по стандартным таблицам для нового веса.
 Ответь ТОЛЬКО исправленным JSON в том же формате:
 ${JSON.stringify(compact)}`;
-    runMenu(prompt, T, true);
+    runMenu(prompt, T, n);
   }
 
   // ---------- settings & goal calculator ----------
@@ -1224,7 +1251,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "18";
+  const APP_VERSION = "19";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
