@@ -1034,6 +1034,10 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   };
   $("menuBg").onclick = $("menuClose").onclick = () => closeSheet("menu");
 
+  // the AI's kcal sometimes contradicts its own P/F/C (200 g of 5% curd "145 kcal" with 36 g protein);
+  // then no choice of grams can hit kcal and macros together, so such a kcal is replaced by 4·P + 9·F + 4·C
+  const kcalFix = x => { const atw = Math.round(4 * x.p + 9 * x.f + 4 * x.c);
+    if (atw >= 40 && Math.abs(x.kcal - atw) > atw * 0.2) x.kcal = atw; return x; };
   const sumBy = (arr, f) => Math.round(arr.reduce((s, x) => s + (parseNum(x[f]) || 0), 0));
   // one emoji per dish: the AI's if it sent a real one, else guessed from the dish and its ingredients
   const EMOJI_RULES = [[/омлет|яичн|яйц/,"🍳"],[/салат/,"🥗"],[/суп|борщ|щи|бульон|солянк/,"🍲"],[/каш|овсян|гречк|рис|пшен|киноа|булгур/,"🥣"],
@@ -1049,9 +1053,11 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   }
   function normalizeMenu(d){
     const meals = (Array.isArray(d.meals) ? d.meals : []).map(m => {
-      const ing = (Array.isArray(m.ingredients) ? m.ingredients : []).map(i => ({
-        name: String(i.name || "продукт"), grams: num(i.grams), kcal: num(i.kcal ?? i.calories),
-        p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 }));
+      const ing = (Array.isArray(m.ingredients) ? m.ingredients : []).map(i => {
+        const x = { name: String(i.name || "продукт"), grams: num(i.grams), kcal: num(i.kcal ?? i.calories),
+          p: parseNum(i.p ?? i.protein) || 0, f: parseNum(i.f ?? i.fat) || 0, c: parseNum(i.c ?? i.carbs) || 0 };
+        return kcalFix(x);
+      });
       // totals are summed here from the ingredients, so the numbers on screen always add up
       const dishName = String(m.dish || m.name || "");
       return { title: String(m.title || "Приём пищи"), dish: dishName, recipe: String(m.recipe || ""), emoji: pickEmoji(m.emoji, dishName + " " + ing.map(i => i.name).join(" ")), photo: String(m.photo || "").slice(0, 200),
@@ -1144,8 +1150,11 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       const fix = document.createElement("button"); fix.className = "madd"; fix.style.background = "var(--card)";
       fix.textContent = "🔧 Подогнать под мои КБЖУ";
       fix.onclick = () => {
-        const fit = autoFit(saved.meals, T);
-        if (fit !== saved.meals && !menuOff(menuGot(fit), T).length) {      // grams alone were enough: done, no AI
+        // menus made before v27 may carry such contradicting kcal: correct them before fitting
+        const base = saved.meals.map(m => { const ing = m.ingredients.map(i => kcalFix({ ...i }));
+          return { ...m, ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") }; });
+        const fit = autoFit(base, T);
+        if (!menuOff(menuGot(fit), T).length) {      // grams alone were enough: done, no AI
           const keep = fit.map((m, i) => ({ ...m, img: saved.meals[i].img, imgOk: saved.meals[i].imgOk }));
           const s2 = { ...saved, meals: keep, created: Date.now() };
           saveMenu(s2); renderMenu(s2);
@@ -1220,25 +1229,26 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
     meals.forEach(m => m.ingredients.forEach(i => { if (i.grams > 0) items.push(i); }));
     if (!items.length) return null;
     const val = (i, k) => k === "k" ? i.kcal : i[k];
-    const w = { k: 3, p: 1.5, f: 1, c: 1 }, LAM = 0.004, LO = 0.5, HI = 2;
-    const sc = items.map(() => 1);
-    const err = () => { let e = 0; for (const k of keys) { let g = 0; items.forEach((it, j) => g += sc[j] * val(it, k)); e += w[k] * ((g - T[k]) / T[k]) ** 2; }
-      sc.forEach(x => e += LAM * (x - 1) ** 2); return e; };
+    const LAM = 0.004, LO = 0.4, HI = 2.5;
     // coordinate descent: each factor in turn is moved to its best value (the objective is a parabola in it)
-    for (let round = 0; round < 60; round++) {
-      for (let j = 0; j < items.length; j++) {
-        let a = LAM, b = LAM;                       // minimise a·x² − 2b·x  →  x = b/a
-        for (const k of keys) {
-          const v = val(items[j], k) / T[k]; if (!v) continue;
-          let rest = 0; items.forEach((it, q) => { if (q !== j) rest += sc[q] * val(it, k); });
-          a += w[k] * v * v; b += w[k] * v * (1 - rest / T[k]);
+    const solve = w => {
+      const sc = items.map(() => 1);
+      for (let round = 0; round < 80; round++) {
+        for (let j = 0; j < items.length; j++) {
+          let a = LAM, b = LAM;                       // minimise a·x² − 2b·x  →  x = b/a
+          for (const k of keys) {
+            const v = val(items[j], k) / T[k]; if (!v) continue;
+            let rest = 0; items.forEach((it, q) => { if (q !== j) rest += sc[q] * val(it, k); });
+            a += w[k] * v * v; b += w[k] * v * (1 - rest / T[k]);
+          }
+          sc[j] = Math.min(HI, Math.max(LO, b / a));
         }
-        sc[j] = Math.min(HI, Math.max(LO, b / a));
       }
-    }
+      return sc;
+    };
     // new grams, rounded the way a person would weigh them; nutrition recalculated for the rounded grams
     const step = g => g >= 100 ? 10 : g >= 30 ? 5 : 1;
-    const out = meals.map(m => {
+    const build = sc => meals.map(m => {
       const ing = m.ingredients.map(i => {
         const j = items.indexOf(i); if (j < 0) return { ...i };
         const g0 = i.grams * sc[j], st = step(g0), g = Math.max(st, Math.round(g0 / st) * st), r = g / i.grams;
@@ -1246,7 +1256,20 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       });
       return { ...m, ingredients: ing, k: sumBy(ing, "kcal"), p: sumBy(ing, "p"), f: sumBy(ing, "f"), c: sumBy(ing, "c") };
     });
-    return out;
+    // A plain least-squares fit can settle just outside the allowed range on one number (say kcal −7.3%) while the
+    // others have room to spare. So: fit, and while something is out of range or close to its edge, weigh it more and fit again.
+    const tol = k => k === "k" ? T.k * 0.07 : Math.max(8, T[k] * 0.12);
+    const w = { k: 3, p: 1.5, f: 1, c: 1 };
+    let best = null, bestScore = Infinity;
+    for (let pass = 0; pass < 8; pass++) {
+      const out = build(solve(w)), got = menuGot(out);
+      const off = menuOff(got, T), score = off.length * 10 + menuMiss(out, T);
+      if (score < bestScore) { best = out; bestScore = score; }
+      const edge = keys.filter(k => Math.abs(got[k] - T[k]) > 0.8 * tol(k));
+      if (!edge.length) break;
+      edge.forEach(k => w[k] *= 3);
+    }
+    return best;
   }
   const menuGot = meals => ({ k: sumBy(meals, "k"), p: sumBy(meals, "p"), f: sumBy(meals, "f"), c: sumBy(meals, "c") });
   // how far a menu is from the targets (sum of relative misses), to keep the fitted menu only if it is closer
@@ -1413,7 +1436,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "26";
+  const APP_VERSION = "27";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
