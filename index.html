@@ -768,6 +768,10 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
   function errText(e){
     const st = e && e.status;
     if (isDailyLimit(e)) return "Исчерпан дневной лимит бесплатных запросов OpenRouter для вашего ключа (около 50 в день). Он обнулится завтра. Если пополнить счёт OpenRouter на $10, лимит станет 1000 запросов в день.";
+    const em = e && e.message || "";
+    if (/location is not supported|not available in your (country|region)/i.test(em))
+      return "Google не пускает к Gemini из вашей страны (ограничение по региону). Выберите в ⚙︎ провайдера OpenRouter — он бесплатный и работает из России. Gemini заработает только через VPN, включённый на телефоне.";
+    if (/API key not valid|API_KEY_INVALID/i.test(em)) return "Google не принял ключ Gemini. Скопируйте его заново в aistudio.google.com → Get API key, целиком.";
     if (st === 401) return "OpenRouter не принял ключ. Откройте ⚙︎ и вставьте ключ заново, целиком, без пробелов.";
     if (st === 402) return "На аккаунте OpenRouter отрицательный баланс — бесплатные модели не работают, пока его не пополнить.";
     if (e && e.retry) return escapeHTML(e.message) + (e.tried > 1 ? ` (пробовал ${e.tried} модели)` : "");
@@ -1185,8 +1189,18 @@ ${JSON.stringify(compact)}`;
     res.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   $("sProvider").onchange = () => { const p = $("sProvider").value; $("sModel").value = PROVIDERS[p].model; $("providerHint").innerHTML = PROVIDERS[p].hint; };
+  // the key's prefix tells whose it is: switch the provider so a Gemini key is not sent to OpenRouter (and vice versa)
+  const providerOfKey = k => /^AIza/.test(k) ? "gemini" : /^sk-or-/.test(k) ? "openrouter" : /^sk-[0-9a-f]{20,}$/i.test(k) ? "deepseek" : null;
+  $("sKey").oninput = () => {
+    const want = providerOfKey($("sKey").value.trim());
+    if (want && want !== $("sProvider").value) {
+      $("sProvider").value = want; $("sProvider").onchange();
+      $("providerHint").innerHTML = "Это ключ " + { gemini: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek" }[want] + " — провайдер переключён автоматически.<br>" + PROVIDERS[want].hint;
+    }
+  };
   $("openSettings").onclick = () => { fillSettings(); openSheet("set"); };
   $("setSave").onclick = () => {
+    $("sKey").oninput();
     const p = $("sProvider").value, m = $("sModel").value.trim();
     const wNow = parseNum($("pWeight").value);
     settings = { provider: p, key: $("sKey").value.trim(), model: m === PROVIDERS[p].model ? "" : m, menuPrefs: settings.menuPrefs || "",
@@ -1205,7 +1219,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "16";
+  const APP_VERSION = "17";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
