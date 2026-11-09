@@ -1057,13 +1057,18 @@ textarea{min-height:96px;resize:vertical;line-height:1.4}
       box.append(head, dish, ul, mm);
       if (m.recipe) { const r = document.createElement("div"); r.className = "mr"; r.textContent = "🍳 " + m.recipe; box.append(r); }
       const add = document.createElement("button"); add.className = "madd";
-      add.textContent = m.added ? "✓ Добавлено в дневник" : "+ Добавить в дневник"; add.disabled = !!m.added;
+      // "added" only while that diary entry still exists: deleting it from the diary makes the button active again
+      // (menus saved before v18 have no entryId: for them look for an entry with the same name and calories)
+      const inDiary = m.entryId ? entries.some(e => e.id === m.entryId)
+        : m.added && entries.some(e => e.name === (m.dish || m.title) && e.k === m.k);
+      add.textContent = inDiary ? "✓ Добавлено в дневник" : "+ Добавить в дневник"; add.disabled = inDiary;
       add.onclick = () => {
         const d = currentDay(); if (dayOffset !== 0) d.setHours(12, 0, 0, 0);
-        entries.push({ id: Date.now() + Math.random().toString(36).slice(2), ts: d.getTime(), day: dayKey(d),
+        const id = Date.now() + Math.random().toString(36).slice(2);
+        entries.push({ id, ts: d.getTime(), day: dayKey(d),
           name: m.dish || m.title, k: m.k, p: m.p, f: m.f, c: m.c, thumb: null });
         store.set("tarelka.entries", entries);
-        m.added = true; store.set("tarelka.menu", saved);
+        m.added = true; m.entryId = id; store.set("tarelka.menu", saved);
         add.textContent = "✓ Добавлено в дневник"; add.disabled = true; render();
       };
       box.append(add); out.append(box);
@@ -1219,7 +1224,7 @@ ${JSON.stringify(compact)}`;
 
   // ---------- updates ----------
   // Bump APP_VERSION on every release. The page fetches itself past the cache and offers a reload when it differs.
-  const APP_VERSION = "17";
+  const APP_VERSION = "18";
   $("verTxt").textContent = "Версия " + APP_VERSION;
   const reloadFresh = v => location.replace(location.pathname + "?v=" + (v || Date.now()));
   async function checkUpdate(manual){
